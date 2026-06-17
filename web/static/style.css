@@ -385,6 +385,14 @@ body {
 }
 .filter-add-btn:hover { background: var(--accent-hover); }
 
+.panel-log-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .panel-log {
   flex: 1;
   overflow-y: scroll;
@@ -392,6 +400,32 @@ body {
   font-size: 12px;
   line-height: 1.5;
   padding: 4px 0;
+}
+
+.ts-crosshair {
+  position: absolute;
+  left: 0;
+  right: 8px;
+  height: 1px;
+  background: #f90;
+  pointer-events: none;
+  z-index: 5;
+  display: none;
+}
+
+.ts-crosshair[data-edge]::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  border: 4px solid transparent;
+}
+.ts-crosshair[data-edge="above"]::after {
+  top: 0;
+  border-top-color: #f90;
+}
+.ts-crosshair[data-edge="below"]::after {
+  bottom: 0;
+  border-bottom-color: #f90;
 }
 
 .log-line {

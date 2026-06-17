@@ -1,4 +1,4 @@
-import { attachScrollSync } from './timeline.js';
+import { attachScrollSync, showCrosshairs, clearCrosshairs } from './timeline.js';
 
 const MAX_LINES = 5000;
 const PRUNE_TO = 4000;
@@ -305,22 +305,37 @@ export function openPanel(group, ns, pod, container, onClose) {
     lockBtn.textContent = logEl._scrollLocked ? '⟷ sync' : '⟷ free';
   });
 
+  const crosshairEl = document.createElement('div');
+  crosshairEl.className = 'ts-crosshair';
+
+  const wrapEl = document.createElement('div');
+  wrapEl.className = 'panel-log-wrap';
+  wrapEl.appendChild(logEl);
+  wrapEl.appendChild(crosshairEl);
+
   // Footer
   const footerEl = document.createElement('div');
   footerEl.className = 'panel-footer';
   footerEl.textContent = '0 lines · last: —';
 
   el.appendChild(toolbar);
-  el.appendChild(logEl);
+  el.appendChild(wrapEl);
   el.appendChild(footerEl);
 
-  const panel = { id, group, ns, pod, container, el, logEl, footerEl, filterBtn, active: true, lineCount: 0, lastTs: null, filters: [] };
+  const panel = { id, group, ns, pod, container, el, logEl, wrapEl, crosshairEl, footerEl, filterBtn, active: true, lineCount: 0, lastTs: null, filters: [] };
   for (const p of panels) p.active = false;
   panels.push(panel);
 
   filterBtn.addEventListener('click', () => openFilterDialog(panel));
 
   attachScrollSync(logEl, getAllLogEls, () => logEl._scrollLocked);
+
+  logEl.addEventListener('mouseover', e => {
+    const line = e.target.closest('.log-line[data-ts]');
+    if (!line) return;
+    showCrosshairs(line.dataset.ts, panel, panels);
+  });
+  logEl.addEventListener('mouseleave', () => clearCrosshairs(panels));
 
   renderAll();
 

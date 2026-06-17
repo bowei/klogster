@@ -26,7 +26,7 @@ function topVisibleTimestamp(logEl) {
  * Find the span in logEl whose data-ts is closest to targetTs (ISO string).
  * Uses binary search on the ordered list of spans.
  */
-function findClosestSpan(logEl, targetTs) {
+export function findClosestSpan(logEl, targetTs) {
   const spans = logEl.querySelectorAll('.log-line[data-ts]');
   if (!spans.length) return null;
 
@@ -50,13 +50,53 @@ function findClosestSpan(logEl, targetTs) {
 }
 
 /**
- * Attach a scroll listener to a panel log element. When it scrolls,
- * all other visible, unlocked panels are aligned to the same timestamp.
+ * Show a horizontal crosshair in every panel except sourcePanel at the Y
+ * position corresponding to the given ISO timestamp. If the timestamp falls
+ * outside the panel's current viewport, shows a small edge marker instead.
  *
- * @param {HTMLElement} logEl  - the .panel-log div
- * @param {() => HTMLElement[]} getOtherLogs - function returning other .panel-log elements
- * @param {() => boolean} isLocked - returns true if this panel participates in sync
+ * @param {string} ts - ISO timestamp to locate
+ * @param {object} sourcePanel - the panel the user is hovering
+ * @param {object[]} allPanels - all open panels (each with logEl, wrapEl, crosshairEl)
  */
+export function showCrosshairs(ts, sourcePanel, allPanels) {
+  for (const panel of allPanels) {
+    if (panel === sourcePanel) continue;
+    const span = findClosestSpan(panel.logEl, ts);
+    if (!span) {
+      panel.crosshairEl.style.display = 'none';
+      continue;
+    }
+
+    const spanRect = span.getBoundingClientRect();
+    const wrapRect = panel.wrapEl.getBoundingClientRect();
+    const y = spanRect.top - wrapRect.top;
+
+    panel.crosshairEl.style.display = 'block';
+    if (y < 0) {
+      panel.crosshairEl.dataset.edge = 'above';
+      panel.crosshairEl.style.top = '0';
+      panel.crosshairEl.style.bottom = '';
+    } else if (y > wrapRect.height) {
+      panel.crosshairEl.dataset.edge = 'below';
+      panel.crosshairEl.style.top = '';
+      panel.crosshairEl.style.bottom = '0';
+    } else {
+      delete panel.crosshairEl.dataset.edge;
+      panel.crosshairEl.style.top = y + 'px';
+      panel.crosshairEl.style.bottom = '';
+    }
+  }
+}
+
+/**
+ * Hide all crosshair indicators across all panels.
+ */
+export function clearCrosshairs(allPanels) {
+  for (const panel of allPanels) {
+    panel.crosshairEl.style.display = 'none';
+  }
+}
+
 export function attachScrollSync(logEl, getOtherLogs, isLocked) {
   logEl.addEventListener('scroll', () => {
     if (syncInProgress) return;
