@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strconv"
 )
 
@@ -29,8 +30,15 @@ func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
 		for _, p := range pods {
 			gi.Pods = append(gi.Pods, podInfo{Namespace: p.Namespace, Pod: p.PodName, Container: p.ContainerName})
 		}
+		sort.Slice(gi.Pods, func(i, j int) bool {
+			a, b := gi.Pods[i], gi.Pods[j]
+			return a.Namespace+"/"+a.Pod+"/"+a.Container < b.Namespace+"/"+b.Pod+"/"+b.Container
+		})
 		resp.Groups = append(resp.Groups, gi)
 	}
+	sort.Slice(resp.Groups, func(i, j int) bool {
+		return resp.Groups[i].Name < resp.Groups[j].Name
+	})
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
