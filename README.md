@@ -5,35 +5,57 @@ set of Pods given by a list of namespace, pod label selectors.
 
 ## Command line
 
--logdir `<dir>` to store the logs. default to `/tmp/klogster`.
--cfg `<config file>` for klogster. default to klogster.yaml.
--serve `<ip:port>`. default to :7070. where the UI will be served.
+```
+-logdir <dir>     directory to store logs (default: /tmp/klogster)
+-cfg <file>       klogster config file (default: klogster.yaml)
+-serve <ip:port>  address to serve the UI (default: :7070)
+-demo             run with sample data instead of connecting to Kubernetes
+```
 
 ## Config file
 
 ```yaml
-- name: serverPods # log group name
-  - namespace: server-ns
-    labels:
-      app: server
-- name: databasePods # log group name
-  - namespace: db-ns # multiple selectors to watch
-    labels:
-      app: mysql
-  - namespace: backup-db-ns
-    labels:
-      app: postgres
+- name: serverPods
+  selectors:
+    - namespace: server-ns
+      labels:
+        app: server
+
+- name: databasePods
+  selectors:
+    - namespace: db-ns
+      labels:
+        app: mysql
+    - namespace: backup-db-ns
+      labels:
+        app: postgres
 ```
 
 ## Functionality
 
-klogster connects to Kubernetes cluster configured in the standard kube config.
-Each log will be streamed and saved to `-logdir` organized by:
+klogster connects to the Kubernetes cluster configured in the standard kubeconfig.
+Logs are streamed from matching pods and saved to `-logdir` organized as:
 
-`<log group name>/<ns>:<pod name>`
+```
+<logdir>/<log group name>/<namespace>:<pod name>
+```
+
+The last 10,000 lines per pod are kept in memory for fast serving; the full stream is
+appended to disk.
+
+## Demo mode
+
+Run without a Kubernetes cluster to explore the UI with sample data:
+
+```
+go run ./cmd --demo
+```
+
+This starts the server with two pre-populated log groups (`serverPods`, `databasePods`)
+containing realistic timestamped log lines. No kubeconfig or config file is required.
 
 ## UI
 
-* The UI will show the logs as a set of configurable tabbed panels, like in an editor.
-* Tabs can be opened, closed and dragged to change which logs are shown.
-* Logs should be shown aligning timestamps across different panels when scrolling.
+* Logs are shown as a set of configurable tabbed panels, like in an editor.
+* Tabs can be opened, closed, and dragged to reorder.
+* Timestamps are aligned across panels when scrolling.
