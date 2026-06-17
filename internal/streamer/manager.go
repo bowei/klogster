@@ -107,6 +107,14 @@ func (m *Manager) stopStreamer(ev watcher.PodEvent) {
 	}
 }
 
+// RegisterDemoPod injects a fake pod into the active set without a real streamer.
+func (m *Manager) RegisterDemoPod(group, ns, pod string) {
+	k := streamerKey(group, ns, pod)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.active[k] = func() {}
+}
+
 // ActivePods returns the currently streaming pods grouped by log group name.
 func (m *Manager) ActivePods() map[string][]PodInfo {
 	m.mu.Lock()
