@@ -227,6 +227,19 @@ function init() {
     document.getElementById('sidebar').classList.add('hidden');
   });
 
+  function openHelp() {
+    document.getElementById('help-dialog').classList.remove('hidden');
+    document.getElementById('help-overlay').classList.remove('hidden');
+  }
+  function closeHelp() {
+    document.getElementById('help-dialog').classList.add('hidden');
+    document.getElementById('help-overlay').classList.add('hidden');
+  }
+  document.getElementById('btn-help').addEventListener('click', openHelp);
+  document.getElementById('btn-close-help').addEventListener('click', closeHelp);
+  document.getElementById('help-overlay').addEventListener('click', closeHelp);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeHelp(); });
+
   connectWS();
   pollGroups();
   setInterval(pollGroups, POLL_INTERVAL_MS);

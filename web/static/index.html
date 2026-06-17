@@ -9,7 +9,8 @@
 <body>
   <div id="app">
     <header id="header">
-      <span id="logo">klogster</span>
+      <a id="logo" href="https://github.com/bowei/klogster" target="_blank" rel="noopener">klogster</a>
+      <button id="btn-help" title="Help">?</button>
       <button id="btn-focus" title="Focus all panels on a regexp pattern">Focus</button>
       <div id="tab-bar"></div>
       <button id="btn-open-sidebar" title="Browse pods">＋ Pod</button>
@@ -22,6 +23,43 @@
       <div id="pod-list"></div>
     </div>
     <div id="panels-container"></div>
+  </div>
+  <div id="help-overlay" class="hidden"></div>
+  <div id="help-dialog" class="hidden">
+    <div class="help-header">
+      <span>klogster — keyboard &amp; feature reference</span>
+      <button id="btn-close-help">✕</button>
+    </div>
+    <div class="help-body">
+      <section>
+        <h3>Panels</h3>
+        <dl>
+          <dt>＋ Pod</dt><dd>Open the pod browser to add a new log panel.</dd>
+          <dt>Panel close (✕)</dt><dd>Close an individual log panel.</dd>
+          <dt>Drag tabs</dt><dd>Reorder panels by dragging their header tabs.</dd>
+          <dt>Lock / Unlock scroll</dt><dd>Toggle live-tail for a panel. When unlocked, new lines scroll into view automatically.</dd>
+        </dl>
+      </section>
+      <section>
+        <h3>Filtering</h3>
+        <dl>
+          <dt>Filter button</dt><dd>Per-panel include/exclude filters using regular expressions. <span class="help-badge-pos">+</span> keeps matching lines, <span class="help-badge-neg">−</span> hides them.</dd>
+          <dt>Focus</dt><dd>Highlight lines matching a regexp across <em>all</em> panels, with optional context lines above/below each match.</dd>
+        </dl>
+      </section>
+      <section>
+        <h3>Timeline crosshair</h3>
+        <dl>
+          <dt>Hover over a timestamp</dt><dd>Shows an orange crosshair on all panels aligned to the same moment in time.</dd>
+        </dl>
+      </section>
+      <section>
+        <h3>State persistence</h3>
+        <dl>
+          <dt>URL / session storage</dt><dd>Open panels, filters, and focus state are saved automatically and restored on page reload.</dd>
+        </dl>
+      </section>
+    </div>
   </div>
   <script type="module" src="app.js"></script>
 </body>
