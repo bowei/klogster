@@ -18,7 +18,7 @@ function updateFooter(p) {
 
 setInterval(() => { for (const p of panels) updateFooter(p); }, 1000);
 
-// panels: [{id, group, ns, pod, logEl, locked}]
+// panels: [{id, group, ns, pod, container, logEl, locked}]
 const panels = [];
 let nextId = 1;
 
@@ -40,7 +40,7 @@ function renderTabBar() {
     const title = document.createElement('span');
     title.className = 'tab-title';
     title.textContent = p.pod;
-    title.title = `${p.group} / ${p.ns} / ${p.pod}`;
+    title.title = `${p.group} / ${p.ns} / ${p.pod} / ${p.container}`;
 
     const close = document.createElement('button');
     close.className = 'tab-close';
@@ -103,11 +103,11 @@ function activatePanel(id) {
 }
 
 /**
- * Open a new panel for a pod. Returns the panel id.
+ * Open a new panel for a pod/container. Returns the panel id.
  * onClose(id) is called when the panel is removed.
  */
-export function openPanel(group, ns, pod, onClose) {
-  const existing = panels.find(p => p.group === group && p.ns === ns && p.pod === pod);
+export function openPanel(group, ns, pod, container, onClose) {
+  const existing = panels.find(p => p.group === group && p.ns === ns && p.pod === pod && p.container === container);
   if (existing) {
     activatePanel(existing.id);
     return existing.id;
@@ -126,7 +126,7 @@ export function openPanel(group, ns, pod, onClose) {
 
   const label = document.createElement('span');
   label.className = 'panel-label';
-  label.textContent = `${group} / ${ns} / ${pod}`;
+  label.textContent = `${group} / ${ns} / ${pod} / ${container}`;
   label.title = label.textContent;
 
   const lockBtn = document.createElement('button');
@@ -157,7 +157,7 @@ export function openPanel(group, ns, pod, onClose) {
   el.appendChild(logEl);
   el.appendChild(footerEl);
 
-  const panel = { id, group, ns, pod, el, logEl, footerEl, active: true, lineCount: 0, lastTs: null };
+  const panel = { id, group, ns, pod, container, el, logEl, footerEl, active: true, lineCount: 0, lastTs: null };
   for (const p of panels) p.active = false;
   panels.push(panel);
 
@@ -184,20 +184,14 @@ function removePanel(id) {
   renderTabBar();
 
   // Notify app to unsubscribe
-  document.dispatchEvent(new CustomEvent('panel:closed', { detail: { id, group: p.group, ns: p.ns, pod: p.pod } }));
+  document.dispatchEvent(new CustomEvent('panel:closed', { detail: { id, group: p.group, ns: p.ns, pod: p.pod, container: p.container } }));
 }
 
 /**
- * Append a log line to the panel identified by (group, ns, pod).
- *
- * @param {string} group
- * @param {string} ns
- * @param {string} pod
- * @param {string} ts   - ISO timestamp (may be empty string)
- * @param {string} text - full raw line text
+ * Append a log line to the panel identified by (group, ns, pod, container).
  */
-export function appendLine(group, ns, pod, ts, text) {
-  const p = panels.find(x => x.group === group && x.ns === ns && x.pod === pod);
+export function appendLine(group, ns, pod, container, ts, text) {
+  const p = panels.find(x => x.group === group && x.ns === ns && x.pod === pod && x.container === container);
   if (!p) return;
 
   const { logEl } = p;
@@ -245,8 +239,8 @@ function pruneLines(logEl) {
 /**
  * Prepend backfill lines (history) to a panel. Lines are oldest-first.
  */
-export function prependLines(group, ns, pod, lines) {
-  const p = panels.find(x => x.group === group && x.ns === ns && x.pod === pod);
+export function prependLines(group, ns, pod, container, lines) {
+  const p = panels.find(x => x.group === group && x.ns === ns && x.pod === pod && x.container === container);
   if (!p || !lines.length) return;
 
   const { logEl } = p;
@@ -297,5 +291,5 @@ function extractTimestamp(line) {
 }
 
 export function getPanelIds() {
-  return panels.map(p => ({ id: p.id, group: p.group, ns: p.ns, pod: p.pod }));
+  return panels.map(p => ({ id: p.id, group: p.group, ns: p.ns, pod: p.pod, container: p.container }));
 }

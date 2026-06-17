@@ -7,10 +7,10 @@ const WS_RECONNECT_MAX_MS = 30_000;
 let ws = null;
 let wsReconnectDelay = WS_RECONNECT_BASE_MS;
 let wsReconnectTimer = null;
-let openPanelKeys = new Set(); // "group/ns/pod"
+let openPanelKeys = new Set(); // "group/ns/pod/container"
 
-function panelKey(group, ns, pod) {
-  return `${group}/${ns}/${pod}`;
+function panelKey(group, ns, pod, container) {
+  return `${group}/${ns}/${pod}/${container}`;
 }
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
@@ -27,17 +27,17 @@ function connectWS() {
     if (dot) dot.className = 'connected';
     // Re-subscribe to all open panels after reconnect
     for (const key of openPanelKeys) {
-      const [group, ns, pod] = key.split('/');
-      wsSend({ type: 'subscribe', group, ns, pod });
+      const [group, ns, pod, container] = key.split('/');
+      wsSend({ type: 'subscribe', group, ns, pod, container });
     }
   });
 
   ws.addEventListener('message', e => {
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }
-    const { group, ns, pod, ts, text } = msg;
-    if (group && ns && pod && text !== undefined) {
-      appendLine(group, ns, pod, ts || '', text);
+    const { group, ns, pod, container, ts, text } = msg;
+    if (group && ns && pod && container && text !== undefined) {
+      appendLine(group, ns, pod, container, ts || '', text);
     }
   });
 
@@ -60,19 +60,19 @@ function wsSend(msg) {
 
 // ── Panel lifecycle ────────────────────────────────────────────────────────
 
-async function openPodPanel(group, ns, pod) {
-  const key = panelKey(group, ns, pod);
+async function openPodPanel(group, ns, pod, container) {
+  const key = panelKey(group, ns, pod, container);
   openPanelKeys.add(key);
 
-  const id = openPanel(group, ns, pod, () => {});
-  wsSend({ type: 'subscribe', group, ns, pod });
+  const id = openPanel(group, ns, pod, container, () => {});
+  wsSend({ type: 'subscribe', group, ns, pod, container });
 
   // Backfill from history
   try {
-    const resp = await fetch(`/api/logs?group=${encodeURIComponent(group)}&ns=${encodeURIComponent(ns)}&pod=${encodeURIComponent(pod)}&lines=500`);
+    const resp = await fetch(`/api/logs?group=${encodeURIComponent(group)}&ns=${encodeURIComponent(ns)}&pod=${encodeURIComponent(pod)}&container=${encodeURIComponent(container)}&lines=500`);
     const lines = await resp.json();
     if (Array.isArray(lines) && lines.length) {
-      prependLines(group, ns, pod, lines);
+      prependLines(group, ns, pod, container, lines);
     }
   } catch { /* ignore — live stream will work regardless */ }
 
@@ -81,10 +81,10 @@ async function openPodPanel(group, ns, pod) {
 }
 
 document.addEventListener('panel:closed', e => {
-  const { group, ns, pod } = e.detail;
-  const key = panelKey(group, ns, pod);
+  const { group, ns, pod, container } = e.detail;
+  const key = panelKey(group, ns, pod, container);
   openPanelKeys.delete(key);
-  wsSend({ type: 'unsubscribe', group, ns, pod });
+  wsSend({ type: 'unsubscribe', group, ns, pod, container });
   renderSidebar();
 });
 
@@ -111,7 +111,7 @@ function renderSidebar() {
     list.appendChild(heading);
 
     for (const p of (g.pods || [])) {
-      const key = panelKey(g.name, p.namespace, p.pod);
+      const key = panelKey(g.name, p.namespace, p.pod, p.container);
       const item = document.createElement('div');
       item.className = 'pod-item' + (openPanelKeys.has(key) ? ' open' : '');
 
@@ -131,7 +131,7 @@ function renderSidebar() {
       item.appendChild(name);
       item.appendChild(ns);
       item.addEventListener('click', () => {
-        openPodPanel(g.name, p.namespace, p.pod);
+        openPodPanel(g.name, p.namespace, p.pod, p.container);
         document.getElementById('sidebar').classList.add('hidden');
       });
       list.appendChild(item);
