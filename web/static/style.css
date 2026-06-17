@@ -660,6 +660,22 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.log-level {
+  display: none;
+  width: 5ch;
+  min-width: 5ch;
+  flex-shrink: 0;
+  margin-right: 1ch;
+  font-variant-numeric: tabular-nums;
+}
+.has-level .log-level { display: inline-block; }
+.log-level[data-level="INFO"]  { color: #4caf80; }
+.log-level[data-level="WARN"]  { color: #ce9178; }
+.log-level[data-level="ERROR"] { color: #f44747; }
+.log-level[data-level="FATAL"] { color: #f44747; font-weight: bold; }
+.log-level[data-level="DEBUG"] { color: var(--text-dim); }
+.log-level[data-level="TRACE"] { color: var(--text-dim); opacity: 0.6; }
+
 .log-body {
   flex: 1;
   min-width: 0;

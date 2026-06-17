@@ -55,9 +55,9 @@ function connectWS() {
   ws.addEventListener('message', e => {
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }
-    const { group, ns, pod, container, ts, message, fields } = msg;
+    const { group, ns, pod, container, ts, message, fields, level } = msg;
     if (group && ns && pod && container && message !== undefined) {
-      appendLine(group, ns, pod, container, ts || '', message, fields || null);
+      appendLine(group, ns, pod, container, ts || '', message, fields || null, level || '');
     }
   });
 

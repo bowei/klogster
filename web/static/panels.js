@@ -401,7 +401,7 @@ export function openPanel(group, ns, pod, container, onClose) {
   el.appendChild(wrapEl);
   el.appendChild(footerEl);
 
-  const panel = { id, group, ns, pod, container, el, logEl, wrapEl, crosshairEl, footerEl, filterBtn, active: true, lineCount: 0, lastTs: null, filters: [] };
+  const panel = { id, group, ns, pod, container, el, logEl, wrapEl, crosshairEl, footerEl, filterBtn, active: true, lineCount: 0, lastTs: null, filters: [], hasLevel: false };
   for (const p of panels) p.active = false;
   panels.push(panel);
 
@@ -450,7 +450,7 @@ function formatTs(ts) {
   return date + ' ' + time;
 }
 
-function buildLogEntry(ts, message, fields) {
+function buildLogEntry(ts, message, fields, level) {
   const entry = document.createElement('div');
   entry.className = 'log-entry';
   if (ts) entry.dataset.ts = ts;
@@ -462,6 +462,14 @@ function buildLogEntry(ts, message, fields) {
     tsEl.title = ts;
   }
   entry.appendChild(tsEl);
+
+  const lvlEl = document.createElement('span');
+  lvlEl.className = 'log-level';
+  if (level && level !== 'OTHER') {
+    lvlEl.textContent = level;
+    lvlEl.dataset.level = level;
+  }
+  entry.appendChild(lvlEl);
 
   const bodyEl = document.createElement('div');
   bodyEl.className = 'log-body';
@@ -487,14 +495,18 @@ function buildLogEntry(ts, message, fields) {
 /**
  * Append a log line to the panel identified by (group, ns, pod, container).
  */
-export function appendLine(group, ns, pod, container, ts, message, fields) {
+export function appendLine(group, ns, pod, container, ts, message, fields, level) {
   const p = panels.find(x => x.group === group && x.ns === ns && x.pod === pod && x.container === container);
   if (!p) return;
 
   const { logEl } = p;
   const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
 
-  const entry = buildLogEntry(ts, message, fields);
+  const entry = buildLogEntry(ts, message, fields, level || '');
+  if (!p.hasLevel && level && level !== 'OTHER') {
+    p.hasLevel = true;
+    p.el.classList.add('has-level');
+  }
   const bodyEl = entry.querySelector('.log-body');
   const text = bodyEl ? bodyEl.textContent : message || '';
   const panelVisible = lineVisible(p.filters, text);
@@ -536,8 +548,13 @@ export function prependLines(group, ns, pod, container, lines) {
   const frag = document.createDocumentFragment();
 
   for (const line of lines) {
-    const entry = buildLogEntry(line.ts || '', line.message || '', line.fields || null);
+    const entry = buildLogEntry(line.ts || '', line.message || '', line.fields || null, line.level || '');
     frag.appendChild(entry);
+  }
+
+  if (!p.hasLevel && lines.some(l => l.level && l.level !== 'OTHER')) {
+    p.hasLevel = true;
+    p.el.classList.add('has-level');
   }
 
   logEl.insertBefore(frag, logEl.firstChild);
