@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>klogster</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="header">
+      <span id="logo">klogster</span>
+      <div id="tab-bar"></div>
+      <button id="btn-open-sidebar" title="Browse pods">＋ Pod</button>
+    </header>
+    <div id="sidebar" class="hidden">
+      <div id="sidebar-header">
+        <span>Available Pods</span>
+        <button id="btn-close-sidebar">✕</button>
+      </div>
+      <div id="pod-list"></div>
+    </div>
+    <div id="panels-container"></div>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+- name: serverPods
+  selectors:
+    - namespace: server-ns
+      labels:
+        app: server
+
+- name: databasePods
+  selectors:
+    - namespace: db-ns
+      labels:
+        app: mysql
+    - namespace: backup-db-ns
+      labels:
+        app: postgres
