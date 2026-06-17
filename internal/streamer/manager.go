@@ -15,8 +15,9 @@ import (
 )
 
 type PodInfo struct {
-	Namespace string
-	PodName   string
+	Namespace     string
+	PodName       string
+	ContainerName string
 }
 
 type Manager struct {
@@ -37,8 +38,8 @@ func NewManager(client kubernetes.Interface, store *storage.Store, h *hub.Hub) *
 	}
 }
 
-func streamerKey(group, ns, pod string) string {
-	return group + "/" + ns + "/" + pod
+func streamerKey(group, ns, pod, container string) string {
+	return group + "/" + ns + "/" + pod + "/" + container
 }
 
 func (m *Manager) Run(ctx context.Context, events <-chan watcher.PodEvent) {
@@ -61,7 +62,7 @@ func (m *Manager) Run(ctx context.Context, events <-chan watcher.PodEvent) {
 }
 
 func (m *Manager) startStreamer(ctx context.Context, ev watcher.PodEvent) {
-	k := streamerKey(ev.GroupName, ev.Namespace, ev.PodName)
+	k := streamerKey(ev.GroupName, ev.Namespace, ev.PodName, ev.ContainerName)
 	m.mu.Lock()
 	if _, exists := m.active[k]; exists {
 		m.mu.Unlock()
@@ -71,7 +72,7 @@ func (m *Manager) startStreamer(ctx context.Context, ev watcher.PodEvent) {
 	m.active[k] = cancel
 	m.mu.Unlock()
 
-	s := New(ev.GroupName, ev.Namespace, ev.PodName, m.client, m.store, m.hub)
+	s := New(ev.GroupName, ev.Namespace, ev.PodName, ev.ContainerName, m.client, m.store, m.hub)
 	go func() {
 		backoff := time.Second
 		for {
@@ -98,7 +99,7 @@ func (m *Manager) startStreamer(ctx context.Context, ev watcher.PodEvent) {
 }
 
 func (m *Manager) stopStreamer(ev watcher.PodEvent) {
-	k := streamerKey(ev.GroupName, ev.Namespace, ev.PodName)
+	k := streamerKey(ev.GroupName, ev.Namespace, ev.PodName, ev.ContainerName)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if cancel, ok := m.active[k]; ok {
@@ -107,9 +108,9 @@ func (m *Manager) stopStreamer(ev watcher.PodEvent) {
 	}
 }
 
-// RegisterDemoPod injects a fake pod into the active set without a real streamer.
-func (m *Manager) RegisterDemoPod(group, ns, pod string) {
-	k := streamerKey(group, ns, pod)
+// RegisterDemoPod injects a fake pod/container into the active set without a real streamer.
+func (m *Manager) RegisterDemoPod(group, ns, pod, container string) {
+	k := streamerKey(group, ns, pod, container)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.active[k] = func() {}
@@ -121,12 +122,12 @@ func (m *Manager) ActivePods() map[string][]PodInfo {
 	defer m.mu.Unlock()
 	result := map[string][]PodInfo{}
 	for k := range m.active {
-		parts := strings.SplitN(k, "/", 3)
-		if len(parts) != 3 {
+		parts := strings.SplitN(k, "/", 4)
+		if len(parts) != 4 {
 			continue
 		}
-		group, ns, pod := parts[0], parts[1], parts[2]
-		result[group] = append(result[group], PodInfo{Namespace: ns, PodName: pod})
+		group, ns, pod, container := parts[0], parts[1], parts[2], parts[3]
+		result[group] = append(result[group], PodInfo{Namespace: ns, PodName: pod, ContainerName: container})
 	}
 	return result
 }

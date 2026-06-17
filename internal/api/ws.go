@@ -13,10 +13,11 @@ var upgrader = websocket.Upgrader{
 }
 
 type wsMessage struct {
-	Type  string `json:"type"`
-	Group string `json:"group"`
-	NS    string `json:"ns"`
-	Pod   string `json:"pod"`
+	Type      string `json:"type"`
+	Group     string `json:"group"`
+	NS        string `json:"ns"`
+	Pod       string `json:"pod"`
+	Container string `json:"container"`
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -51,9 +52,9 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 		switch m.Type {
 		case "subscribe":
-			client.Subscribe(m.Group, m.NS, m.Pod)
+			client.Subscribe(m.Group, m.NS, m.Pod, m.Container)
 		case "unsubscribe":
-			client.Unsubscribe(m.Group, m.NS, m.Pod)
+			client.Unsubscribe(m.Group, m.NS, m.Pod, m.Container)
 		}
 	}
 	<-writeDone

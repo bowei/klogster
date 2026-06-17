@@ -29,7 +29,19 @@ set of Pods given by a list of namespace, pod label selectors.
     - namespace: backup-db-ns
       labels:
         app: postgres
+
+- name: mixedPods
+  selectors:
+    - namespace: app-ns
+      labels:
+        app: worker
+      containers:        # optional: stream only these containers
+        - app
+        - sidecar
 ```
+
+The `containers` field is optional. When omitted, klogster streams all containers
+in each matching pod. Each container is tracked as a separate log source.
 
 ## Functionality
 
@@ -37,7 +49,7 @@ klogster connects to the Kubernetes cluster configured in the standard kubeconfi
 Logs are streamed from matching pods and saved to `-logdir` organized as:
 
 ```
-<logdir>/<log group name>/<namespace>:<pod name>
+<logdir>/<log group name>/<namespace>:<pod name>:<container name>
 ```
 
 The last 10,000 lines per pod are kept in memory for fast serving; the full stream is

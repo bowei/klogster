@@ -15,8 +15,9 @@ type LogGroup struct {
 }
 
 type Selector struct {
-	Namespace string            `yaml:"namespace"`
-	Labels    map[string]string `yaml:"labels"`
+	Namespace  string            `yaml:"namespace"`
+	Labels     map[string]string `yaml:"labels"`
+	Containers []string          `yaml:"containers"`
 }
 
 func Load(path string) (Config, error) {

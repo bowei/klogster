@@ -57,12 +57,12 @@ func New(logdir string) (*Store, error) {
 	}, nil
 }
 
-func podKey(group, ns, pod string) string {
-	return group + "/" + ns + "/" + pod
+func podKey(group, ns, pod, container string) string {
+	return group + "/" + ns + "/" + pod + "/" + container
 }
 
-func (s *Store) getFile(group, ns, pod string) (*os.File, error) {
-	key := podKey(group, ns, pod)
+func (s *Store) getFile(group, ns, pod, container string) (*os.File, error) {
+	key := podKey(group, ns, pod, container)
 	if f, ok := s.files[key]; ok {
 		return f, nil
 	}
@@ -70,7 +70,7 @@ func (s *Store) getFile(group, ns, pod string) (*os.File, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
-	path := filepath.Join(dir, ns+":"+pod)
+	path := filepath.Join(dir, ns+":"+pod+":"+container)
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, err
@@ -79,8 +79,8 @@ func (s *Store) getFile(group, ns, pod string) (*os.File, error) {
 	return f, nil
 }
 
-func (s *Store) getBuffer(group, ns, pod string) *ringBuffer {
-	key := podKey(group, ns, pod)
+func (s *Store) getBuffer(group, ns, pod, container string) *ringBuffer {
+	key := podKey(group, ns, pod, container)
 	if b, ok := s.buffers[key]; ok {
 		return b
 	}
@@ -89,20 +89,20 @@ func (s *Store) getBuffer(group, ns, pod string) *ringBuffer {
 	return b
 }
 
-func (s *Store) Append(group, ns, pod, line string) {
+func (s *Store) Append(group, ns, pod, container, line string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	f, err := s.getFile(group, ns, pod)
+	f, err := s.getFile(group, ns, pod, container)
 	if err == nil {
 		f.WriteString(line + "\n")
 	}
-	s.getBuffer(group, ns, pod).append(line)
+	s.getBuffer(group, ns, pod, container).append(line)
 }
 
-func (s *Store) Tail(group, ns, pod string, n int) []string {
+func (s *Store) Tail(group, ns, pod, container string, n int) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.getBuffer(group, ns, pod).tail(n)
+	return s.getBuffer(group, ns, pod, container).tail(n)
 }
 
 func (s *Store) Close() {

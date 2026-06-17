@@ -90,22 +90,23 @@ func Run() {
 }
 
 type demoPod struct {
-	group string
-	ns    string
-	pod   string
+	group     string
+	ns        string
+	pod       string
+	container string
 }
 
 func seedDemoData(store *storage.Store, mgr *streamer.Manager) {
 	pods := []demoPod{
-		{"serverPods", "server-ns", "server-6d4f8b9c7-xkqzp"},
-		{"serverPods", "server-ns", "server-6d4f8b9c7-mnjvw"},
-		{"serverPods", "server-ns", "server-6d4f8b9c7-rthbs"},
-		{"databasePods", "db-ns", "mysql-0"},
-		{"databasePods", "backup-db-ns", "postgres-7c9d6f-lmnop"},
+		{"serverPods", "server-ns", "server-6d4f8b9c7-xkqzp", "app"},
+		{"serverPods", "server-ns", "server-6d4f8b9c7-mnjvw", "app"},
+		{"serverPods", "server-ns", "server-6d4f8b9c7-rthbs", "app"},
+		{"databasePods", "db-ns", "mysql-0", "mysql"},
+		{"databasePods", "backup-db-ns", "postgres-7c9d6f-lmnop", "postgres"},
 	}
 
 	for _, p := range pods {
-		mgr.RegisterDemoPod(p.group, p.ns, p.pod)
+		mgr.RegisterDemoPod(p.group, p.ns, p.pod, p.container)
 		seedPodLogs(store, p)
 	}
 }
@@ -119,7 +120,7 @@ func seedPodLogs(store *storage.Store, p demoPod) {
 	for i, tmpl := range templates {
 		ts := base.Add(time.Duration(i) * 3 * time.Second).Format(time.RFC3339)
 		line := fmt.Sprintf("%s  %s", ts, tmpl)
-		store.Append(p.group, p.ns, p.pod, line)
+		store.Append(p.group, p.ns, p.pod, p.container, line)
 	}
 }
 

@@ -20,27 +20,30 @@ const (
 )
 
 type PodEvent struct {
-	Type      EventType
-	GroupName string
-	Namespace string
-	PodName   string
+	Type          EventType
+	GroupName     string
+	Namespace     string
+	PodName       string
+	ContainerName string
 }
 
 type PodWatcher struct {
-	groupName string
-	namespace string
-	labels    map[string]string
-	client    kubernetes.Interface
-	events    chan<- PodEvent
+	groupName  string
+	namespace  string
+	labels     map[string]string
+	containers []string
+	client     kubernetes.Interface
+	events     chan<- PodEvent
 }
 
-func NewPodWatcher(groupName, namespace string, labels map[string]string, client kubernetes.Interface, events chan<- PodEvent) *PodWatcher {
+func NewPodWatcher(groupName, namespace string, labels map[string]string, containers []string, client kubernetes.Interface, events chan<- PodEvent) *PodWatcher {
 	return &PodWatcher{
-		groupName: groupName,
-		namespace: namespace,
-		labels:    labels,
-		client:    client,
-		events:    events,
+		groupName:  groupName,
+		namespace:  namespace,
+		labels:     labels,
+		containers: containers,
+		client:     client,
+		events:     events,
 	}
 }
 
@@ -65,6 +68,20 @@ func podFromTombstone(obj interface{}) (*corev1.Pod, bool) {
 	return pod, ok
 }
 
+// containersForPod returns the container names to stream. If the watcher has a
+// configured container list, that list is used directly. Otherwise all containers
+// in the pod spec are returned.
+func (w *PodWatcher) containersForPod(pod *corev1.Pod) []string {
+	if len(w.containers) > 0 {
+		return w.containers
+	}
+	names := make([]string, len(pod.Spec.Containers))
+	for i, c := range pod.Spec.Containers {
+		names[i] = c.Name
+	}
+	return names
+}
+
 func (w *PodWatcher) Run(ctx context.Context) {
 	sel := labelSelector(w.labels)
 	factory := informers.NewSharedInformerFactoryWithOptions(
@@ -83,9 +100,12 @@ func (w *PodWatcher) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			select {
-			case w.events <- PodEvent{Type: Added, GroupName: w.groupName, Namespace: w.namespace, PodName: pod.Name}:
-			case <-ctx.Done():
+			for _, c := range w.containersForPod(pod) {
+				select {
+				case w.events <- PodEvent{Type: Added, GroupName: w.groupName, Namespace: w.namespace, PodName: pod.Name, ContainerName: c}:
+				case <-ctx.Done():
+					return
+				}
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
@@ -93,9 +113,12 @@ func (w *PodWatcher) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			select {
-			case w.events <- PodEvent{Type: Deleted, GroupName: w.groupName, Namespace: w.namespace, PodName: pod.Name}:
-			case <-ctx.Done():
+			for _, c := range w.containersForPod(pod) {
+				select {
+				case w.events <- PodEvent{Type: Deleted, GroupName: w.groupName, Namespace: w.namespace, PodName: pod.Name, ContainerName: c}:
+				case <-ctx.Done():
+					return
+				}
 			}
 		},
 	})

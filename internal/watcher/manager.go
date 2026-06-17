@@ -31,7 +31,7 @@ func (m *Manager) Run(ctx context.Context) {
 	for _, group := range m.cfg {
 		for _, sel := range group.Selectors {
 			wg.Add(1)
-			w := NewPodWatcher(group.Name, sel.Namespace, sel.Labels, m.client, m.events)
+			w := NewPodWatcher(group.Name, sel.Namespace, sel.Labels, sel.Containers, m.client, m.events)
 			go func() {
 				defer wg.Done()
 				w.Run(ctx)

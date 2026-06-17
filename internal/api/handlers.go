@@ -18,6 +18,7 @@ type groupInfo struct {
 type podInfo struct {
 	Namespace string `json:"namespace"`
 	Pod       string `json:"pod"`
+	Container string `json:"container"`
 }
 
 func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
@@ -26,7 +27,7 @@ func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
 	for group, pods := range active {
 		gi := groupInfo{Name: group}
 		for _, p := range pods {
-			gi.Pods = append(gi.Pods, podInfo{Namespace: p.Namespace, Pod: p.PodName})
+			gi.Pods = append(gi.Pods, podInfo{Namespace: p.Namespace, Pod: p.PodName, Container: p.ContainerName})
 		}
 		resp.Groups = append(resp.Groups, gi)
 	}
@@ -38,13 +39,14 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	group := r.URL.Query().Get("group")
 	ns := r.URL.Query().Get("ns")
 	pod := r.URL.Query().Get("pod")
+	container := r.URL.Query().Get("container")
 	n := 200
 	if nStr := r.URL.Query().Get("lines"); nStr != "" {
 		if parsed, err := strconv.Atoi(nStr); err == nil && parsed > 0 {
 			n = parsed
 		}
 	}
-	lines := s.store.Tail(group, ns, pod, n)
+	lines := s.store.Tail(group, ns, pod, container, n)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(lines)
 }

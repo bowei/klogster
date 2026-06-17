@@ -6,11 +6,12 @@ import (
 )
 
 type LogLine struct {
-	GroupName string    `json:"group"`
-	Namespace string    `json:"ns"`
-	PodName   string    `json:"pod"`
-	Timestamp time.Time `json:"ts"`
-	Text      string    `json:"text"`
+	GroupName     string    `json:"group"`
+	Namespace     string    `json:"ns"`
+	PodName       string    `json:"pod"`
+	ContainerName string    `json:"container"`
+	Timestamp     time.Time `json:"ts"`
+	Text          string    `json:"text"`
 }
 
 type Client struct {
@@ -20,30 +21,30 @@ type Client struct {
 	closed        bool
 }
 
-func (c *Client) Subscribe(group, ns, pod string) {
+func (c *Client) Subscribe(group, ns, pod, container string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.subscriptions[subKey(group, ns, pod)] = true
+	c.subscriptions[subKey(group, ns, pod, container)] = true
 }
 
-func (c *Client) Unsubscribe(group, ns, pod string) {
+func (c *Client) Unsubscribe(group, ns, pod, container string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	delete(c.subscriptions, subKey(group, ns, pod))
+	delete(c.subscriptions, subKey(group, ns, pod, container))
 }
 
-func (c *Client) isSubscribed(group, ns, pod string) bool {
+func (c *Client) isSubscribed(group, ns, pod, container string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.subscriptions[subKey(group, ns, pod)]
+	return c.subscriptions[subKey(group, ns, pod, container)]
 }
 
 func (c *Client) Send() <-chan LogLine {
 	return c.send
 }
 
-func subKey(group, ns, pod string) string {
-	return group + "/" + ns + "/" + pod
+func subKey(group, ns, pod, container string) string {
+	return group + "/" + ns + "/" + pod + "/" + container
 }
 
 type Hub struct {
@@ -85,7 +86,7 @@ func (h *Hub) Broadcast(line LogLine) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for c := range h.clients {
-		if !c.isSubscribed(line.GroupName, line.Namespace, line.PodName) {
+		if !c.isSubscribed(line.GroupName, line.Namespace, line.PodName, line.ContainerName) {
 			continue
 		}
 		c.mu.Lock()
