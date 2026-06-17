@@ -3,6 +3,21 @@ import { attachScrollSync } from './timeline.js';
 const MAX_LINES = 5000;
 const PRUNE_TO = 4000;
 
+function relativeTime(isoTs) {
+  if (!isoTs) return '—';
+  const secs = (Date.now() - new Date(isoTs).getTime()) / 1000;
+  if (secs < 5) return 'just now';
+  if (secs < 60) return `${Math.floor(secs)}s ago`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  return `${Math.floor(secs / 3600)}h ago`;
+}
+
+function updateFooter(p) {
+  p.footerEl.textContent = `${p.lineCount.toLocaleString()} lines · last: ${relativeTime(p.lastTs)}`;
+}
+
+setInterval(() => { for (const p of panels) updateFooter(p); }, 1000);
+
 // panels: [{id, group, ns, pod, logEl, locked}]
 const panels = [];
 let nextId = 1;
@@ -133,10 +148,16 @@ export function openPanel(group, ns, pod, onClose) {
     lockBtn.textContent = logEl._scrollLocked ? '⟷ sync' : '⟷ free';
   });
 
+  // Footer
+  const footerEl = document.createElement('div');
+  footerEl.className = 'panel-footer';
+  footerEl.textContent = '0 lines · last: —';
+
   el.appendChild(toolbar);
   el.appendChild(logEl);
+  el.appendChild(footerEl);
 
-  const panel = { id, group, ns, pod, el, logEl, active: true, lineCount: 0 };
+  const panel = { id, group, ns, pod, el, logEl, footerEl, active: true, lineCount: 0, lastTs: null };
   for (const p of panels) p.active = false;
   panels.push(panel);
 
@@ -200,6 +221,8 @@ export function appendLine(group, ns, pod, ts, text) {
 
   logEl.appendChild(span);
   p.lineCount++;
+  if (ts) p.lastTs = ts;
+  updateFooter(p);
 
   if (p.lineCount > MAX_LINES) {
     pruneLines(logEl);
@@ -254,6 +277,14 @@ export function prependLines(group, ns, pod, lines) {
     pruneLines(logEl);
     p.lineCount = PRUNE_TO;
   }
+
+  if (!p.lastTs) {
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const ts = extractTimestamp(lines[i]);
+      if (ts) { p.lastTs = ts; break; }
+    }
+  }
+  updateFooter(p);
 }
 
 function extractTimestamp(line) {
