@@ -201,9 +201,34 @@ async function restoreFromHash() {
   }
 }
 
+// ── Theme ──────────────────────────────────────────────────────────────────
+
+const THEME_KEY = 'klogster-theme';
+const VALID_THEMES = ['dark', 'light', 'pastel'];
+
+function applyTheme(theme) {
+  if (!VALID_THEMES.includes(theme)) theme = 'dark';
+  if (theme === 'dark') {
+    document.documentElement.removeAttribute('data-theme');
+  } else {
+    document.documentElement.setAttribute('data-theme', theme);
+  }
+  localStorage.setItem(THEME_KEY, theme);
+  document.querySelectorAll('input[name="theme"]').forEach(r => {
+    r.checked = r.value === theme;
+  });
+}
+
+function initTheme() {
+  const saved = localStorage.getItem(THEME_KEY) || 'dark';
+  applyTheme(saved);
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 
 function init() {
+  initTheme();
+
   // Add connection status dot to header
   const header = document.getElementById('header');
   const dot = document.createElement('span');
@@ -238,7 +263,22 @@ function init() {
   document.getElementById('btn-help').addEventListener('click', openHelp);
   document.getElementById('btn-close-help').addEventListener('click', closeHelp);
   document.getElementById('help-overlay').addEventListener('click', closeHelp);
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeHelp(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeHelp(); closeConfig(); } });
+
+  function openConfig() {
+    document.getElementById('config-dialog').classList.remove('hidden');
+    document.getElementById('config-overlay').classList.remove('hidden');
+  }
+  function closeConfig() {
+    document.getElementById('config-dialog').classList.add('hidden');
+    document.getElementById('config-overlay').classList.add('hidden');
+  }
+  document.getElementById('btn-config').addEventListener('click', openConfig);
+  document.getElementById('btn-close-config').addEventListener('click', closeConfig);
+  document.getElementById('config-overlay').addEventListener('click', closeConfig);
+  document.querySelectorAll('input[name="theme"]').forEach(r => {
+    r.addEventListener('change', () => applyTheme(r.value));
+  });
 
   connectWS();
   pollGroups();

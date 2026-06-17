@@ -18,6 +18,38 @@
   --sidebar-w: 280px;
 }
 
+[data-theme="light"] {
+  --bg: #ffffff;
+  --bg2: #f3f3f3;
+  --bg3: #e8e8e8;
+  --border: #d0d0d0;
+  --text: #1e1e1e;
+  --text-dim: #6e6e6e;
+  --accent: #0066b8;
+  --accent-hover: #005a9e;
+  --tab-active-bg: #ffffff;
+  --tab-inactive-bg: #ececec;
+  --ts-color: #007b6b;
+  --sep-color: #c8c8c8;
+  --field-color: #0060a0;
+}
+
+[data-theme="pastel"] {
+  --bg: #fdf6ff;
+  --bg2: #f3eaf8;
+  --bg3: #ecddf5;
+  --border: #d5b8e8;
+  --text: #2d1f3d;
+  --text-dim: #8a6fa0;
+  --accent: #7c4daa;
+  --accent-hover: #6a3d94;
+  --tab-active-bg: #fdf6ff;
+  --tab-inactive-bg: #ecddf5;
+  --ts-color: #2e9e7a;
+  --sep-color: #c9a8df;
+  --field-color: #5b6ab8;
+}
+
 body {
   background: var(--bg);
   color: var(--text);
@@ -57,6 +89,23 @@ body {
 }
 #logo:hover { color: var(--accent-hover); }
 
+#btn-config {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#btn-config:hover { color: var(--text); border-color: var(--text-dim); }
+
 #btn-help {
   background: none;
   border: 1px solid var(--border);
@@ -74,6 +123,149 @@ body {
   justify-content: center;
 }
 #btn-help:hover { color: var(--text); border-color: var(--text-dim); }
+
+/* ── Config dialog ── */
+#config-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  background: rgba(0,0,0,0.45);
+}
+#config-overlay.hidden { display: none; }
+
+#config-dialog {
+  position: fixed;
+  z-index: 401;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+#config-dialog.hidden { display: none; }
+
+#btn-close-config {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 16px;
+}
+#btn-close-config:hover { color: var(--text); }
+
+.config-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.config-section h3 {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.theme-options {
+  display: flex;
+  gap: 16px;
+}
+
+.theme-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.theme-option input[type="radio"] { display: none; }
+
+.theme-swatch {
+  width: 48px;
+  height: 36px;
+  border-radius: 5px;
+  border: 2px solid var(--border);
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.theme-option input[type="radio"]:checked + .theme-swatch {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* Dark swatch */
+.theme-swatch-dark { background: #1e1e1e; }
+.theme-swatch-dark::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+}
+.theme-swatch-dark::after {
+  content: '';
+  position: absolute;
+  bottom: 6px; left: 6px;
+  width: 60%;
+  height: 2px;
+  background: #4ec9b0;
+  border-radius: 1px;
+}
+
+/* Light swatch */
+.theme-swatch-light { background: #ffffff; }
+.theme-swatch-light::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: #f3f3f3;
+  border-bottom: 1px solid #d0d0d0;
+}
+.theme-swatch-light::after {
+  content: '';
+  position: absolute;
+  bottom: 6px; left: 6px;
+  width: 60%;
+  height: 2px;
+  background: #007b6b;
+  border-radius: 1px;
+}
+
+/* Pastel swatch */
+.theme-swatch-pastel { background: #fdf6ff; }
+.theme-swatch-pastel::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: #f3eaf8;
+  border-bottom: 1px solid #d5b8e8;
+}
+.theme-swatch-pastel::after {
+  content: '';
+  position: absolute;
+  bottom: 6px; left: 6px;
+  width: 60%;
+  height: 2px;
+  background: #7c4daa;
+  border-radius: 1px;
+}
 
 /* ── Help dialog ── */
 #help-overlay {
