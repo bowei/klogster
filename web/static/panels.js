@@ -18,9 +18,160 @@ function updateFooter(p) {
 
 setInterval(() => { for (const p of panels) updateFooter(p); }, 1000);
 
-// panels: [{id, group, ns, pod, container, logEl, locked}]
+// panels: [{id, group, ns, pod, container, logEl, locked, filters, filterBtn}]
 const panels = [];
 let nextId = 1;
+
+function lineVisible(filters, text) {
+  for (const f of filters) {
+    if (!f.re) continue;
+    if (f.type === 'negative' && f.re.test(text)) return false;
+    if (f.type === 'positive' && !f.re.test(text)) return false;
+  }
+  return true;
+}
+
+function applyFilters(p) {
+  for (const span of p.logEl.querySelectorAll('.log-line')) {
+    span.style.display = lineVisible(p.filters, span.textContent) ? '' : 'none';
+  }
+  updateFilterBtn(p);
+}
+
+function updateFilterBtn(p) {
+  const n = p.filters.length;
+  p.filterBtn.textContent = n > 0 ? `filter (${n})` : 'filter';
+  p.filterBtn.classList.toggle('active', n > 0);
+  p.filterBtn.title = n > 0 ? `${n} filter(s) active — click to edit` : 'Add log filters';
+}
+
+let activeFilterDialog = null;
+
+function openFilterDialog(p) {
+  const toolbar = p.el.querySelector('.panel-toolbar');
+
+  if (activeFilterDialog && activeFilterDialog._panelId === p.id) {
+    activeFilterDialog.remove();
+    activeFilterDialog = null;
+    return;
+  }
+  if (activeFilterDialog) {
+    activeFilterDialog.remove();
+    activeFilterDialog = null;
+  }
+
+  const dialog = document.createElement('div');
+  dialog.className = 'filter-dialog';
+  dialog._panelId = p.id;
+  activeFilterDialog = dialog;
+
+  const header = document.createElement('div');
+  header.className = 'filter-dialog-header';
+  header.textContent = 'Log Filters';
+
+  const listEl = document.createElement('div');
+  listEl.className = 'filter-list';
+
+  function renderList() {
+    listEl.innerHTML = '';
+    if (p.filters.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'filter-empty';
+      empty.textContent = 'No filters yet';
+      listEl.appendChild(empty);
+      return;
+    }
+    p.filters.forEach((f, i) => {
+      const item = document.createElement('div');
+      item.className = 'filter-item';
+
+      const badge = document.createElement('span');
+      badge.className = `filter-badge ${f.type === 'positive' ? 'filter-badge-pos' : 'filter-badge-neg'}`;
+      badge.textContent = f.type === 'positive' ? '+' : '−';
+      badge.title = f.type === 'positive' ? 'show only matching' : 'hide matching';
+
+      const pat = document.createElement('span');
+      pat.className = 'filter-pattern' + (f.re ? '' : ' filter-pattern-invalid');
+      pat.textContent = f.pattern;
+      pat.title = f.re ? f.pattern : `Invalid regexp: ${f.pattern}`;
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'filter-remove';
+      removeBtn.textContent = '×';
+      removeBtn.addEventListener('click', () => {
+        p.filters.splice(i, 1);
+        applyFilters(p);
+        renderList();
+      });
+
+      item.appendChild(badge);
+      item.appendChild(pat);
+      item.appendChild(removeBtn);
+      listEl.appendChild(item);
+    });
+  }
+
+  const addRow = document.createElement('div');
+  addRow.className = 'filter-add-row';
+
+  const typeSelect = document.createElement('select');
+  typeSelect.className = 'filter-type-select';
+  [['positive', '+ show'], ['negative', '− hide']].forEach(([v, t]) => {
+    const opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = t;
+    typeSelect.appendChild(opt);
+  });
+
+  const patInput = document.createElement('input');
+  patInput.type = 'text';
+  patInput.className = 'filter-pattern-input';
+  patInput.placeholder = 'regexp pattern…';
+  patInput.spellcheck = false;
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'filter-add-btn';
+  addBtn.textContent = 'Add';
+
+  function doAdd() {
+    const pattern = patInput.value.trim();
+    if (!pattern) return;
+    let re = null;
+    try { re = new RegExp(pattern, 'i'); } catch (_) {}
+    p.filters.push({ type: typeSelect.value, pattern, re });
+    applyFilters(p);
+    renderList();
+    patInput.value = '';
+    patInput.focus();
+  }
+
+  addBtn.addEventListener('click', doAdd);
+  patInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') doAdd();
+    if (e.key === 'Escape') { dialog.remove(); activeFilterDialog = null; }
+  });
+
+  addRow.appendChild(typeSelect);
+  addRow.appendChild(patInput);
+  addRow.appendChild(addBtn);
+
+  dialog.appendChild(header);
+  dialog.appendChild(listEl);
+  dialog.appendChild(addRow);
+  toolbar.appendChild(dialog);
+
+  function onOutside(e) {
+    if (!dialog.contains(e.target) && e.target !== p.filterBtn) {
+      dialog.remove();
+      activeFilterDialog = null;
+      document.removeEventListener('mousedown', onOutside, true);
+    }
+  }
+  setTimeout(() => document.addEventListener('mousedown', onOutside, true), 0);
+
+  renderList();
+  patInput.focus();
+}
 
 let dragSrcId = null;
 
@@ -134,7 +285,13 @@ export function openPanel(group, ns, pod, container, onClose) {
   lockBtn.textContent = '⟷ sync';
   lockBtn.title = 'Toggle timestamp scroll sync';
 
+  const filterBtn = document.createElement('button');
+  filterBtn.className = 'btn-filter';
+  filterBtn.textContent = 'filter';
+  filterBtn.title = 'Add log filters';
+
   toolbar.appendChild(label);
+  toolbar.appendChild(filterBtn);
   toolbar.appendChild(lockBtn);
 
   // Log area
@@ -157,9 +314,11 @@ export function openPanel(group, ns, pod, container, onClose) {
   el.appendChild(logEl);
   el.appendChild(footerEl);
 
-  const panel = { id, group, ns, pod, container, el, logEl, footerEl, active: true, lineCount: 0, lastTs: null };
+  const panel = { id, group, ns, pod, container, el, logEl, footerEl, filterBtn, active: true, lineCount: 0, lastTs: null, filters: [] };
   for (const p of panels) p.active = false;
   panels.push(panel);
+
+  filterBtn.addEventListener('click', () => openFilterDialog(panel));
 
   attachScrollSync(logEl, getAllLogEls, () => logEl._scrollLocked);
 
@@ -213,6 +372,8 @@ export function appendLine(group, ns, pod, container, ts, text) {
   const textNode = document.createTextNode(ts ? text.slice(ts.length + 1) : text);
   span.appendChild(textNode);
 
+  if (!lineVisible(p.filters, span.textContent)) span.style.display = 'none';
+
   logEl.appendChild(span);
   p.lineCount++;
   if (ts) p.lastTs = ts;
@@ -262,6 +423,7 @@ export function prependLines(group, ns, pod, container, lines) {
     } else {
       span.appendChild(document.createTextNode(rawLine));
     }
+    if (!lineVisible(p.filters, span.textContent)) span.style.display = 'none';
     frag.appendChild(span);
   }
 

@@ -227,6 +227,7 @@ body {
   color: var(--text-dim);
   flex-shrink: 0;
   gap: 8px;
+  position: relative;
 }
 
 .panel-label {
@@ -249,6 +250,140 @@ body {
 }
 .btn-lock-scroll:hover { color: var(--text); border-color: var(--text-dim); }
 .btn-lock-scroll.unlocked { color: var(--ts-color); border-color: var(--ts-color); }
+
+.btn-filter {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn-filter:hover { color: var(--text); border-color: var(--text-dim); }
+.btn-filter.active { color: #ce9178; border-color: #ce9178; }
+
+.filter-dialog {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 200;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  min-width: 280px;
+  max-width: 400px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+.filter-dialog-header {
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+
+.filter-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.filter-empty {
+  padding: 8px 10px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.filter-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+.filter-item:last-child { border-bottom: none; }
+
+.filter-badge {
+  font-weight: 700;
+  font-size: 13px;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.filter-badge-pos { color: #4ec9b0; }
+.filter-badge-neg { color: #f44747; }
+
+.filter-pattern {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  color: var(--text);
+}
+.filter-pattern-invalid { color: #f44747; }
+
+.filter-remove {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.filter-remove:hover { color: var(--text); }
+
+.filter-add-row {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.filter-type-select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.filter-pattern-input {
+  flex: 1;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 11px;
+  min-width: 0;
+}
+.filter-pattern-input:focus { outline: none; border-color: var(--accent); }
+.filter-pattern-input::placeholder { color: var(--text-dim); }
+
+.filter-add-btn {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.filter-add-btn:hover { background: var(--accent-hover); }
 
 .panel-log {
   flex: 1;
