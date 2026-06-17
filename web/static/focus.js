@@ -196,3 +196,17 @@ export function updateFocusCount(matchCount, totalCount) {
     statusEl.textContent = `${matchCount.toLocaleString()} of ${totalCount.toLocaleString()} lines match`;
   }
 }
+
+export function restoreFocusState(saved) {
+  if (!saved || !saved.pattern) return;
+  focusBtn = document.getElementById('btn-focus');
+  focusState.pattern = saved.pattern;
+  focusState.contextType = saved.contextType || 'line';
+  focusState.contextAmount = saved.contextAmount ?? 3;
+  focusState.contextDirection = saved.contextDirection || 'around';
+  focusState.active = Boolean(saved.active);
+  if (focusState.active && focusState.pattern) {
+    try { focusState.re = new RegExp(focusState.pattern, 'i'); } catch {}
+  }
+  updateFocusBtn();
+}

@@ -90,18 +90,18 @@ The timestamp should be separated on its own column on the side to make it
 easier to read.
 
 ```
-2026-01-01 00:11:22 | Log message...
-2026-01-01 00:11:23 | Long log message that wrapped
-                    | with more text
-2026-01-01 00:11:24 | More logs...   
+2026-01-01 00:11:22.123 | Log message...
+2026-01-01 00:11:23.123 | Long log message that wrapped
+                        | with more text
+2026-01-01 00:11:24.123 | More logs...   
 ```
 
 For logging formats that are structured fields should be display like this:
 
 ```
-2026-01-01 00:11:22 | Message string.
-                    | key1: value1
-                    | key2: value2
+2026-01-01 00:11:22.123 | Message string.
+                        | key1: value1
+                        | key2: value2
 ```
 
 ## UI
@@ -109,6 +109,9 @@ For logging formats that are structured fields should be display like this:
 * Logs are shown as a set of configurable tabbed panels, like in an editor.
 * Tabs can be opened, closed, and dragged to reorder.
 * Timestamps are aligned across panels when scrolling.
+* The current view is saved in the URL hash — copy or bookmark the URL to
+  restore the exact set of open panels, active tab, per-panel filters, and
+  focus state on reload.
 
 ### Focus dialog
 

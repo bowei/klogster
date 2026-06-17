@@ -23,6 +23,10 @@ setInterval(() => { for (const p of panels) updateFooter(p); }, 1000);
 const panels = [];
 let nextId = 1;
 
+function notifyStateChanged() {
+  document.dispatchEvent(new CustomEvent('panels:state-changed'));
+}
+
 function lineVisible(filters, text) {
   for (const f of filters) {
     if (!f.re) continue;
@@ -173,6 +177,7 @@ function openFilterDialog(p) {
         p.filters.splice(i, 1);
         applyFilters(p);
         renderList();
+        notifyStateChanged();
       });
 
       item.appendChild(badge);
@@ -212,6 +217,7 @@ function openFilterDialog(p) {
     p.filters.push({ type: typeSelect.value, pattern, re });
     applyFilters(p);
     renderList();
+    notifyStateChanged();
     patInput.value = '';
     patInput.focus();
   }
@@ -298,6 +304,7 @@ function renderTabBar() {
       panels.splice(dstIdx, 0, moved);
       dragSrcId = null;
       renderAll();
+      notifyStateChanged();
     });
     tab.addEventListener('dragend', () => { dragSrcId = null; });
 
@@ -322,6 +329,7 @@ function renderAll() {
 function activatePanel(id) {
   for (const p of panels) p.active = (p.id === id);
   renderTabBar();
+  notifyStateChanged();
 }
 
 /**
@@ -409,6 +417,7 @@ export function openPanel(group, ns, pod, container, onClose) {
   logEl.addEventListener('mouseleave', () => clearCrosshairs(panels));
 
   renderAll();
+  notifyStateChanged();
 
   return id;
 }
@@ -427,6 +436,7 @@ function removePanel(id) {
     panels[Math.min(idx, panels.length - 1)].active = true;
   }
   renderTabBar();
+  notifyStateChanged();
 
   // Notify app to unsubscribe
   document.dispatchEvent(new CustomEvent('panel:closed', { detail: { id, group: p.group, ns: p.ns, pod: p.pod, container: p.container } }));
@@ -549,4 +559,28 @@ export function prependLines(group, ns, pod, container, lines) {
 
 export function getPanelIds() {
   return panels.map(p => ({ id: p.id, group: p.group, ns: p.ns, pod: p.pod, container: p.container }));
+}
+
+export function getSerializableState() {
+  return panels.map(p => ({
+    group: p.group, ns: p.ns, pod: p.pod, container: p.container,
+    active: p.active,
+    filters: p.filters.map(f => ({ type: f.type, pattern: f.pattern })),
+  }));
+}
+
+export function restoreFilters(group, ns, pod, container, filters) {
+  const p = panels.find(x => x.group === group && x.ns === ns && x.pod === pod && x.container === container);
+  if (!p) return;
+  p.filters = filters.map(f => {
+    let re = null;
+    try { re = new RegExp(f.pattern, 'i'); } catch {}
+    return { type: f.type, pattern: f.pattern, re };
+  });
+  applyFilters(p);
+}
+
+export function setActivePanelByKey(group, ns, pod, container) {
+  const p = panels.find(x => x.group === group && x.ns === ns && x.pod === pod && x.container === container);
+  if (p) activatePanel(p.id);
 }

@@ -1,5 +1,6 @@
-import { openPanel, closePanel, appendLine, prependLines, getPanelIds, applyFocusToAll } from './panels.js';
-import { openFocusDialog } from './focus.js';
+import { openPanel, closePanel, appendLine, prependLines, getPanelIds, applyFocusToAll, getSerializableState, restoreFilters, setActivePanelByKey } from './panels.js';
+import { openFocusDialog, focusState, restoreFocusState } from './focus.js';
+import { saveState, loadState } from './state.js';
 
 const POLL_INTERVAL_MS = 10_000;
 const WS_RECONNECT_BASE_MS = 1000;
@@ -9,9 +10,27 @@ let ws = null;
 let wsReconnectDelay = WS_RECONNECT_BASE_MS;
 let wsReconnectTimer = null;
 let openPanelKeys = new Set(); // "group/ns/pod/container"
+let restoringState = false;
 
 function panelKey(group, ns, pod, container) {
   return `${group}/${ns}/${pod}/${container}`;
+}
+
+// ── State persistence ──────────────────────────────────────────────────────
+
+function serializeFocus() {
+  return {
+    active: focusState.active,
+    pattern: focusState.pattern,
+    contextType: focusState.contextType,
+    contextAmount: focusState.contextAmount,
+    contextDirection: focusState.contextDirection,
+  };
+}
+
+function maybeSaveState() {
+  if (restoringState) return;
+  saveState(getSerializableState(), serializeFocus());
 }
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
@@ -149,6 +168,39 @@ async function pollGroups() {
   } catch { /* server not ready yet */ }
 }
 
+// ── Hash restore ───────────────────────────────────────────────────────────
+
+async function restoreFromHash() {
+  const saved = loadState();
+  if (!saved || !saved.panels.length) return;
+
+  restoringState = true;
+  try {
+    if (saved.focus) restoreFocusState(saved.focus);
+
+    // openPanel() inside openPodPanel() is synchronous, so the panel object
+    // exists before the first await — restoreFilters() can run immediately after.
+    const promises = saved.panels.map(ps => {
+      const p = openPodPanel(ps.group, ps.ns, ps.pod, ps.container);
+      if (ps.filters && ps.filters.length) {
+        restoreFilters(ps.group, ps.ns, ps.pod, ps.container, ps.filters);
+      }
+      return p;
+    });
+
+    const activePs = saved.panels.find(ps => ps.active);
+    if (activePs) {
+      setActivePanelByKey(activePs.group, activePs.ns, activePs.pod, activePs.container);
+    }
+
+    if (focusState.active) applyFocusToAll();
+
+    await Promise.allSettled(promises);
+  } finally {
+    restoringState = false;
+  }
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 
 function init() {
@@ -162,7 +214,11 @@ function init() {
   document.getElementById('btn-focus').addEventListener('click', e => {
     openFocusDialog(e.currentTarget);
   });
-  document.addEventListener('focus:changed', () => applyFocusToAll());
+  document.addEventListener('focus:changed', () => {
+    applyFocusToAll();
+    maybeSaveState();
+  });
+  document.addEventListener('panels:state-changed', () => maybeSaveState());
 
   document.getElementById('btn-open-sidebar').addEventListener('click', () => {
     document.getElementById('sidebar').classList.remove('hidden');
@@ -174,6 +230,7 @@ function init() {
   connectWS();
   pollGroups();
   setInterval(pollGroups, POLL_INTERVAL_MS);
+  restoreFromHash();
 }
 
 init();
