@@ -1,4 +1,5 @@
-import { openPanel, closePanel, appendLine, prependLines, getPanelIds } from './panels.js';
+import { openPanel, closePanel, appendLine, prependLines, getPanelIds, applyFocusToAll } from './panels.js';
+import { openFocusDialog } from './focus.js';
 
 const POLL_INTERVAL_MS = 10_000;
 const WS_RECONNECT_BASE_MS = 1000;
@@ -157,6 +158,11 @@ function init() {
   dot.id = 'conn-status';
   dot.title = 'WebSocket connection';
   header.appendChild(dot);
+
+  document.getElementById('btn-focus').addEventListener('click', e => {
+    openFocusDialog(e.currentTarget);
+  });
+  document.addEventListener('focus:changed', () => applyFocusToAll());
 
   document.getElementById('btn-open-sidebar').addEventListener('click', () => {
     document.getElementById('sidebar').classList.remove('hidden');

@@ -1,4 +1,5 @@
 import { attachScrollSync, showCrosshairs, clearCrosshairs } from './timeline.js';
+import { focusState, updateFocusCount } from './focus.js';
 
 const MAX_LINES = 5000;
 const PRUNE_TO = 4000;
@@ -39,6 +40,74 @@ function applyFilters(p) {
   }
   updateFilterBtn(p);
 }
+
+function applyPanelFocus(p) {
+  const entries = [...p.logEl.querySelectorAll('.log-entry')];
+
+  if (!focusState.active || !focusState.re) {
+    applyFilters(p);
+    return;
+  }
+
+  // Pass 1: find matching indices
+  const matchIdxs = [];
+  entries.forEach((entry, i) => {
+    const text = entry.querySelector('.log-body')?.textContent ?? entry.textContent;
+    if (focusState.re.test(text)) matchIdxs.push(i);
+  });
+
+  // Pass 2: expand to context windows
+  const visible = new Set();
+  const { contextType, contextAmount, contextDirection } = focusState;
+  for (const idx of matchIdxs) {
+    visible.add(idx);
+    if (contextType === 'line') {
+      const before = contextDirection !== 'after'  ? contextAmount : 0;
+      const after  = contextDirection !== 'before' ? contextAmount : 0;
+      for (let i = Math.max(0, idx - before); i <= Math.min(entries.length - 1, idx + after); i++)
+        visible.add(i);
+    } else {
+      const anchor = new Date(entries[idx].dataset.ts ?? '').getTime();
+      if (!anchor) continue;
+      const before = contextDirection !== 'after'  ? contextAmount * 1000 : 0;
+      const after  = contextDirection !== 'before' ? contextAmount * 1000 : 0;
+      for (let i = 0; i < entries.length; i++) {
+        const t = new Date(entries[i].dataset.ts ?? '').getTime();
+        if (t >= anchor - before && t <= anchor + after) visible.add(i);
+      }
+    }
+  }
+
+  // Apply: must be in context window AND pass per-panel filters
+  entries.forEach((entry, i) => {
+    const text = entry.querySelector('.log-body')?.textContent ?? entry.textContent;
+    entry.style.display = visible.has(i) && lineVisible(p.filters, text) ? '' : 'none';
+  });
+
+  updateFilterBtn(p);
+}
+
+function countFocusMatches() {
+  let matchCount = 0;
+  let totalCount = 0;
+  if (focusState.active && focusState.re) {
+    for (const p of panels) {
+      for (const entry of p.logEl.querySelectorAll('.log-entry')) {
+        totalCount++;
+        const text = entry.querySelector('.log-body')?.textContent ?? entry.textContent;
+        if (focusState.re.test(text)) matchCount++;
+      }
+    }
+    updateFocusCount(matchCount, totalCount);
+  }
+}
+
+export function applyFocusToAll() {
+  for (const p of panels) applyPanelFocus(p);
+  countFocusMatches();
+}
+
+document.addEventListener('focus:count-request', () => countFocusMatches());
 
 function updateFilterBtn(p) {
   const n = p.filters.length;
@@ -417,7 +486,10 @@ export function appendLine(group, ns, pod, container, ts, message, fields) {
 
   const entry = buildLogEntry(ts, message, fields);
   const bodyEl = entry.querySelector('.log-body');
-  if (!lineVisible(p.filters, bodyEl ? bodyEl.textContent : message || '')) entry.style.display = 'none';
+  const text = bodyEl ? bodyEl.textContent : message || '';
+  const panelVisible = lineVisible(p.filters, text);
+  const focusVisible = !focusState.active || !focusState.re || focusState.re.test(text);
+  if (!panelVisible || !focusVisible) entry.style.display = 'none';
 
   logEl.appendChild(entry);
   p.lineCount++;
@@ -455,8 +527,6 @@ export function prependLines(group, ns, pod, container, lines) {
 
   for (const line of lines) {
     const entry = buildLogEntry(line.ts || '', line.message || '', line.fields || null);
-    const bodyEl = entry.querySelector('.log-body');
-    if (!lineVisible(p.filters, bodyEl ? bodyEl.textContent : line.message || '')) entry.style.display = 'none';
     frag.appendChild(entry);
   }
 
@@ -473,6 +543,8 @@ export function prependLines(group, ns, pod, container, lines) {
     }
   }
   updateFooter(p);
+  // Apply focus + per-panel filters after full backfill is inserted
+  applyPanelFocus(p);
 }
 
 export function getPanelIds() {
