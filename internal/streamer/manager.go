@@ -24,6 +24,7 @@ type Manager struct {
 	client kubernetes.Interface
 	store  *storage.Store
 	hub    *hub.Hub
+	stats  *Stats
 
 	mu     sync.Mutex
 	active map[string]context.CancelFunc
@@ -34,6 +35,7 @@ func NewManager(client kubernetes.Interface, store *storage.Store, h *hub.Hub) *
 		client: client,
 		store:  store,
 		hub:    h,
+		stats:  newStats(),
 		active: make(map[string]context.CancelFunc),
 	}
 }
@@ -43,10 +45,14 @@ func streamerKey(group, ns, pod, container string) string {
 }
 
 func (m *Manager) Run(ctx context.Context, events <-chan watcher.PodEvent) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-ticker.C:
+			log.Printf("log stats (per level): %s", m.stats.report())
 		case ev, ok := <-events:
 			if !ok {
 				return
@@ -72,7 +78,7 @@ func (m *Manager) startStreamer(ctx context.Context, ev watcher.PodEvent) {
 	m.active[k] = cancel
 	m.mu.Unlock()
 
-	s := New(ev.GroupName, ev.Namespace, ev.PodName, ev.ContainerName, m.client, m.store, m.hub)
+	s := New(ev.GroupName, ev.Namespace, ev.PodName, ev.ContainerName, m.client, m.store, m.hub, m.stats)
 	go func() {
 		backoff := time.Second
 		for {

@@ -21,9 +21,10 @@ type PodStreamer struct {
 	client        kubernetes.Interface
 	store         *storage.Store
 	hub           *hub.Hub
+	stats         *Stats
 }
 
-func New(groupName, namespace, podName, containerName string, client kubernetes.Interface, store *storage.Store, h *hub.Hub) *PodStreamer {
+func New(groupName, namespace, podName, containerName string, client kubernetes.Interface, store *storage.Store, h *hub.Hub, stats *Stats) *PodStreamer {
 	return &PodStreamer{
 		groupName:     groupName,
 		namespace:     namespace,
@@ -32,6 +33,7 @@ func New(groupName, namespace, podName, containerName string, client kubernetes.
 		client:        client,
 		store:         store,
 		hub:           h,
+		stats:         stats,
 	}
 }
 
@@ -55,6 +57,7 @@ func (s *PodStreamer) Run(ctx context.Context) error {
 		}
 		line := scanner.Text()
 		ts := parseTimestamp(line)
+		s.stats.add(parseLevel(line))
 		s.store.Append(s.groupName, s.namespace, s.podName, s.containerName, line)
 		s.hub.Broadcast(hub.LogLine{
 			GroupName:     s.groupName,
