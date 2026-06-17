@@ -3,6 +3,7 @@ package streamer
 import (
 	"bufio"
 	"context"
+	"io"
 	"strings"
 	"time"
 
@@ -13,12 +14,34 @@ import (
 	"github.com/bowei/klogster/internal/storage"
 )
 
+// logOpener abstracts opening a pod log stream. The real implementation calls
+// the Kubernetes API; tests substitute a fake reader.
+type logOpener interface {
+	open(ctx context.Context) (io.ReadCloser, error)
+}
+
+type k8sLogOpener struct {
+	client        kubernetes.Interface
+	namespace     string
+	podName       string
+	containerName string
+}
+
+func (o *k8sLogOpener) open(ctx context.Context) (io.ReadCloser, error) {
+	opts := &corev1.PodLogOptions{
+		Follow:     true,
+		Timestamps: true,
+		Container:  o.containerName,
+	}
+	return o.client.CoreV1().Pods(o.namespace).GetLogs(o.podName, opts).Stream(ctx)
+}
+
 type PodStreamer struct {
 	groupName     string
 	namespace     string
 	podName       string
 	containerName string
-	client        kubernetes.Interface
+	opener        logOpener
 	store         *storage.Store
 	hub           *hub.Hub
 	stats         *Stats
@@ -30,21 +53,20 @@ func New(groupName, namespace, podName, containerName string, client kubernetes.
 		namespace:     namespace,
 		podName:       podName,
 		containerName: containerName,
-		client:        client,
-		store:         store,
-		hub:           h,
-		stats:         stats,
+		opener: &k8sLogOpener{
+			client:        client,
+			namespace:     namespace,
+			podName:       podName,
+			containerName: containerName,
+		},
+		store: store,
+		hub:   h,
+		stats: stats,
 	}
 }
 
 func (s *PodStreamer) Run(ctx context.Context) error {
-	opts := &corev1.PodLogOptions{
-		Follow:     true,
-		Timestamps: true,
-		Container:  s.containerName,
-	}
-	req := s.client.CoreV1().Pods(s.namespace).GetLogs(s.podName, opts)
-	stream, err := req.Stream(ctx)
+	stream, err := s.opener.open(ctx)
 	if err != nil {
 		return err
 	}
