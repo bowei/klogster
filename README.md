@@ -84,8 +84,47 @@ To add a new format, implement the `logformat.Format` interface in a new file
 under `internal/logformat/` and call `logformat.Register` from an `init`
 function. No other files need to change.
 
+### Log line display
+
+The timestamp should be separated on its own column on the side to make it
+easier to read.
+
+```
+2026-01-01 00:11:22 | Log message...
+2026-01-01 00:11:23 | Long log message that wrapped
+                    | with more text
+2026-01-01 00:11:24 | More logs...   
+```
+
+For logging formats that are structured fields should be display like this:
+
+```
+2026-01-01 00:11:22 | Message string.
+                    | key1: value1
+                    | key2: value2
+```
+
 ## UI
 
 * Logs are shown as a set of configurable tabbed panels, like in an editor.
 * Tabs can be opened, closed, and dragged to reorder.
 * Timestamps are aligned across panels when scrolling.
+
+### Focus dialog
+
+Put a "Focus" button to the left of the tabs to globally focus the logs
+filter across all of the tabs.
+
+The focus dialog will enable filtering of logs across all of the panels
+in an intelligent way by filtering for the same string across all of the
+logs. An example would be a trace UUID that appears in multiple logs.
+
+Focus options:
+
+* Regexp text to match for.
+* Context: This will behave like `grep -C3` where a matching log line will
+  also show log lines nearby. This should have the following options:
+  * Line-based context: number of surrounding lines to show.
+  * Time-based context: show surrounding log lines from within a
+    particular time-bound.
+  * Give context from before, around or after the matching log line

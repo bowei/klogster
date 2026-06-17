@@ -32,8 +32,10 @@ function lineVisible(filters, text) {
 }
 
 function applyFilters(p) {
-  for (const span of p.logEl.querySelectorAll('.log-line')) {
-    span.style.display = lineVisible(p.filters, span.textContent) ? '' : 'none';
+  for (const entry of p.logEl.querySelectorAll('.log-entry')) {
+    const bodyEl = entry.querySelector('.log-body');
+    const text = bodyEl ? bodyEl.textContent : entry.textContent;
+    entry.style.display = lineVisible(p.filters, text) ? '' : 'none';
   }
   updateFilterBtn(p);
 }
@@ -331,7 +333,7 @@ export function openPanel(group, ns, pod, container, onClose) {
   attachScrollSync(logEl, getAllLogEls, () => logEl._scrollLocked);
 
   logEl.addEventListener('mouseover', e => {
-    const line = e.target.closest('.log-line[data-ts]');
+    const line = e.target.closest('.log-entry[data-ts]');
     if (!line) return;
     showCrosshairs(line.dataset.ts, panel, panels);
   });
@@ -361,35 +363,63 @@ function removePanel(id) {
   document.dispatchEvent(new CustomEvent('panel:closed', { detail: { id, group: p.group, ns: p.ns, pod: p.pod, container: p.container } }));
 }
 
+function formatTs(ts) {
+  // ts is RFC3339Nano e.g. "2024-01-16T10:00:00.123456789Z"
+  // Returns "2024-01-16 10:00:00.123456789" (no T, no timezone suffix)
+  const date = ts.slice(0, 10);
+  const time = ts.slice(11).replace(/Z$|[+-].*$/, '');
+  return date + ' ' + time;
+}
+
+function buildLogEntry(ts, message, fields) {
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  if (ts) entry.dataset.ts = ts;
+
+  const tsEl = document.createElement('span');
+  tsEl.className = 'log-ts';
+  if (ts) {
+    tsEl.textContent = formatTs(ts);
+    tsEl.title = ts;
+  }
+  entry.appendChild(tsEl);
+
+  const bodyEl = document.createElement('div');
+  bodyEl.className = 'log-body';
+
+  const msgEl = document.createElement('div');
+  msgEl.className = 'log-msg';
+  msgEl.textContent = message || '';
+  bodyEl.appendChild(msgEl);
+
+  if (fields) {
+    for (const key of Object.keys(fields).sort()) {
+      const fieldEl = document.createElement('div');
+      fieldEl.className = 'log-field';
+      fieldEl.textContent = `${key}: ${fields[key]}`;
+      bodyEl.appendChild(fieldEl);
+    }
+  }
+
+  entry.appendChild(bodyEl);
+  return entry;
+}
+
 /**
  * Append a log line to the panel identified by (group, ns, pod, container).
  */
-export function appendLine(group, ns, pod, container, ts, text) {
+export function appendLine(group, ns, pod, container, ts, message, fields) {
   const p = panels.find(x => x.group === group && x.ns === ns && x.pod === pod && x.container === container);
   if (!p) return;
 
   const { logEl } = p;
   const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
 
-  const span = document.createElement('span');
-  span.className = 'log-line';
-  if (ts) span.dataset.ts = ts;
+  const entry = buildLogEntry(ts, message, fields);
+  const bodyEl = entry.querySelector('.log-body');
+  if (!lineVisible(p.filters, bodyEl ? bodyEl.textContent : message || '')) entry.style.display = 'none';
 
-  if (ts) {
-    const tsSpan = document.createElement('span');
-    tsSpan.className = 'log-ts';
-    // Show only time portion for brevity; full ts in data-ts for sync
-    tsSpan.textContent = ts.slice(11, 23); // HH:MM:SS.mmm
-    tsSpan.title = ts;
-    span.appendChild(tsSpan);
-  }
-
-  const textNode = document.createTextNode(ts ? text.slice(ts.length + 1) : text);
-  span.appendChild(textNode);
-
-  if (!lineVisible(p.filters, span.textContent)) span.style.display = 'none';
-
-  logEl.appendChild(span);
+  logEl.appendChild(entry);
   p.lineCount++;
   if (ts) p.lastTs = ts;
   updateFooter(p);
@@ -405,15 +435,16 @@ export function appendLine(group, ns, pod, container, ts, text) {
 }
 
 function pruneLines(logEl) {
-  const spans = logEl.querySelectorAll('.log-line');
-  const toRemove = spans.length - PRUNE_TO;
+  const entries = logEl.querySelectorAll('.log-entry');
+  const toRemove = entries.length - PRUNE_TO;
   for (let i = 0; i < toRemove; i++) {
-    spans[i].remove();
+    entries[i].remove();
   }
 }
 
 /**
  * Prepend backfill lines (history) to a panel. Lines are oldest-first.
+ * Each line is {ts, message, fields} as returned by /api/logs.
  */
 export function prependLines(group, ns, pod, container, lines) {
   const p = panels.find(x => x.group === group && x.ns === ns && x.pod === pod && x.container === container);
@@ -422,24 +453,11 @@ export function prependLines(group, ns, pod, container, lines) {
   const { logEl } = p;
   const frag = document.createDocumentFragment();
 
-  for (const rawLine of lines) {
-    const ts = extractTimestamp(rawLine);
-    const span = document.createElement('span');
-    span.className = 'log-line';
-    if (ts) span.dataset.ts = ts;
-
-    if (ts) {
-      const tsSpan = document.createElement('span');
-      tsSpan.className = 'log-ts';
-      tsSpan.textContent = ts.slice(11, 23);
-      tsSpan.title = ts;
-      span.appendChild(tsSpan);
-      span.appendChild(document.createTextNode(rawLine.slice(ts.length + 1)));
-    } else {
-      span.appendChild(document.createTextNode(rawLine));
-    }
-    if (!lineVisible(p.filters, span.textContent)) span.style.display = 'none';
-    frag.appendChild(span);
+  for (const line of lines) {
+    const entry = buildLogEntry(line.ts || '', line.message || '', line.fields || null);
+    const bodyEl = entry.querySelector('.log-body');
+    if (!lineVisible(p.filters, bodyEl ? bodyEl.textContent : line.message || '')) entry.style.display = 'none';
+    frag.appendChild(entry);
   }
 
   logEl.insertBefore(frag, logEl.firstChild);
@@ -451,20 +469,10 @@ export function prependLines(group, ns, pod, container, lines) {
 
   if (!p.lastTs) {
     for (let i = lines.length - 1; i >= 0; i--) {
-      const ts = extractTimestamp(lines[i]);
-      if (ts) { p.lastTs = ts; break; }
+      if (lines[i].ts) { p.lastTs = lines[i].ts; break; }
     }
   }
   updateFooter(p);
-}
-
-function extractTimestamp(line) {
-  const idx = line.indexOf(' ');
-  if (idx < 0) return '';
-  const candidate = line.slice(0, idx);
-  // Quick sanity: ISO timestamps start with a digit
-  if (candidate.length < 20 || !/^\d/.test(candidate)) return '';
-  return candidate;
 }
 
 export function getPanelIds() {

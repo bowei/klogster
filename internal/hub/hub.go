@@ -6,13 +6,15 @@ import (
 )
 
 type LogLine struct {
-	GroupName     string    `json:"group"`
-	Namespace     string    `json:"ns"`
-	PodName       string    `json:"pod"`
-	ContainerName string    `json:"container"`
-	Timestamp     time.Time `json:"ts"`
-	Level         string    `json:"level"`
-	Text          string    `json:"text"`
+	GroupName     string            `json:"group"`
+	Namespace     string            `json:"ns"`
+	PodName       string            `json:"pod"`
+	ContainerName string            `json:"container"`
+	Timestamp     time.Time         `json:"ts"`
+	Level         string            `json:"level"`
+	Text          string            `json:"text"`
+	Message       string            `json:"message"`
+	Fields        map[string]string `json:"fields,omitempty"`
 }
 
 type Client struct {

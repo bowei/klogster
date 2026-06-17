@@ -5,6 +5,10 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
+	"time"
+
+	"github.com/bowei/klogster/internal/logformat"
 )
 
 type groupsResponse struct {
@@ -43,6 +47,13 @@ func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+type parsedLogLine struct {
+	Timestamp string            `json:"ts,omitempty"`
+	Level     string            `json:"level,omitempty"`
+	Message   string            `json:"message"`
+	Fields    map[string]string `json:"fields,omitempty"`
+}
+
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	group := r.URL.Query().Get("group")
 	ns := r.URL.Query().Get("ns")
@@ -54,7 +65,29 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 			n = parsed
 		}
 	}
-	lines := s.store.Tail(group, ns, pod, container, n)
+	rawLines := s.store.Tail(group, ns, pod, container, n)
+
+	det := &logformat.Detector{}
+	result := make([]parsedLogLine, 0, len(rawLines))
+	for _, line := range rawLines {
+		var tsStr string
+		inner := line
+		if idx := strings.IndexByte(line, ' '); idx > 0 {
+			candidate := line[:idx]
+			if _, err := time.Parse(time.RFC3339Nano, candidate); err == nil {
+				tsStr = candidate
+				inner = line[idx+1:]
+			}
+		}
+		parsed := det.Parse(inner)
+		result = append(result, parsedLogLine{
+			Timestamp: tsStr,
+			Level:     parsed.Level,
+			Message:   parsed.Message,
+			Fields:    parsed.Fields,
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(lines)
+	json.NewEncoder(w).Encode(result)
 }

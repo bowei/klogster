@@ -12,6 +12,8 @@
   --tab-active-bg: #1e1e1e;
   --tab-inactive-bg: #2d2d30;
   --ts-color: #4ec9b0;
+  --sep-color: #444;
+  --field-color: #9cdcfe;
   --header-h: 38px;
   --sidebar-w: 280px;
 }
@@ -428,18 +430,34 @@ body {
   border-bottom-color: #f90;
 }
 
-.log-line {
-  display: block;
+.log-entry {
+  display: flex;
+  align-items: flex-start;
   padding: 0 8px;
-  white-space: pre-wrap;
-  word-break: break-all;
 }
-.log-line:hover { background: var(--bg3); }
+.log-entry:hover { background: var(--bg3); }
 
 .log-ts {
+  width: 29ch;
+  min-width: 29ch;
+  flex-shrink: 0;
+  margin-right: 1ch;
   color: var(--ts-color);
-  margin-right: 8px;
   user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.log-body {
+  flex: 1;
+  min-width: 0;
+  border-left: 1px solid var(--sep-color);
+  padding-left: 1ch;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-field {
+  color: var(--field-color);
 }
 
 .panel-status {

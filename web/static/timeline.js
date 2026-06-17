@@ -12,7 +12,7 @@ let syncInProgress = false;
  */
 function topVisibleTimestamp(logEl) {
   const top = logEl.getBoundingClientRect().top;
-  const spans = logEl.querySelectorAll('.log-line[data-ts]');
+  const spans = logEl.querySelectorAll('.log-entry[data-ts]');
   for (const span of spans) {
     const rect = span.getBoundingClientRect();
     if (rect.bottom > top) {
@@ -27,7 +27,7 @@ function topVisibleTimestamp(logEl) {
  * Uses binary search on the ordered list of spans.
  */
 export function findClosestSpan(logEl, targetTs) {
-  const spans = logEl.querySelectorAll('.log-line[data-ts]');
+  const spans = logEl.querySelectorAll('.log-entry[data-ts]');
   if (!spans.length) return null;
 
   let lo = 0, hi = spans.length - 1;

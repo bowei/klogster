@@ -92,6 +92,8 @@ func (s *PodStreamer) Run(ctx context.Context) error {
 			Timestamp:     ts,
 			Level:         parsed.Level,
 			Text:          line,
+			Message:       parsed.Message,
+			Fields:        parsed.Fields,
 		})
 	}
 	return scanner.Err()
