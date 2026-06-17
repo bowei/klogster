@@ -66,6 +66,24 @@ go run ./cmd --demo
 This starts the server with two pre-populated log groups (`serverPods`, `databasePods`)
 containing realistic timestamped log lines. No kubeconfig or config file is required.
 
+## Log formats
+
+klogster auto-detects the log format of each container's output stream by
+sampling the first few lines. Once detected, the format is locked in for the
+lifetime of that stream. Supported formats:
+
+| Format | Detection | Example line |
+|--------|-----------|--------------|
+| **klog** | `[IWEF]MMDD HH:MM:SS.usec threadid file:line]` | `I0116 10:00:00.000000 1234 server.go:42] server started` |
+| **slog text** | starts with `time=`, contains `level=` and `msg=` | `time=2024-01-16T10:00:00Z level=INFO msg="hello" port=8080` |
+| **slog JSON** | starts with `{`, contains `"level":` and `"msg":` | `{"time":"2024-01-16T10:00:00Z","level":"INFO","msg":"hello"}` |
+| **std log** | `YYYY/MM/DD HH:MM:SS` prefix | `2024/01/16 10:00:00 server started` |
+| **unstructured** | fallback for any other text | `INFO server started on :8080` |
+
+To add a new format, implement the `logformat.Format` interface in a new file
+under `internal/logformat/` and call `logformat.Register` from an `init`
+function. No other files need to change.
+
 ## UI
 
 * Logs are shown as a set of configurable tabbed panels, like in an editor.

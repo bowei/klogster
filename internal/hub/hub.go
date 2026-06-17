@@ -11,6 +11,7 @@ type LogLine struct {
 	PodName       string    `json:"pod"`
 	ContainerName string    `json:"container"`
 	Timestamp     time.Time `json:"ts"`
+	Level         string    `json:"level"`
 	Text          string    `json:"text"`
 }
 

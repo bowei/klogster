@@ -40,36 +40,3 @@ func (s *Stats) report() string {
 	return strings.Join(parts, " ")
 }
 
-// parseLevel extracts a normalized log level from a raw log line.
-// Lines from K8s have a leading RFC3339 timestamp token prepended by the API.
-func parseLevel(line string) string {
-	// skip timestamp prefix
-	idx := strings.IndexByte(line, ' ')
-	if idx < 0 {
-		return "OTHER"
-	}
-	rest := strings.TrimLeft(line[idx:], " ")
-	end := strings.IndexAny(rest, " \t")
-	if end < 0 {
-		end = len(rest)
-	}
-	token := strings.ToUpper(strings.Trim(rest[:end], "[]():"))
-	switch token {
-	case "INFO", "INFORMATION":
-		return "INFO"
-	case "WARN", "WARNING":
-		return "WARN"
-	case "ERROR", "ERR":
-		return "ERROR"
-	case "DEBUG", "DBG":
-		return "DEBUG"
-	case "FATAL", "CRITICAL":
-		return "FATAL"
-	case "TRACE":
-		return "TRACE"
-	case "NOTE", "NOTICE", "LOG":
-		return "INFO"
-	default:
-		return "OTHER"
-	}
-}
