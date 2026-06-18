@@ -3,6 +3,7 @@ package logformat
 import (
 	"strconv"
 	"strings"
+	"time"
 )
 
 // SlogText parses Go's log/slog text handler format:
@@ -30,6 +31,11 @@ func (SlogText) Parse(line string) ParsedLine {
 	}
 	if msg, ok := kv["msg"]; ok {
 		p.Message = msg
+	}
+	if ts, ok := kv["time"]; ok {
+		if t, err := time.Parse(time.RFC3339, ts); err == nil {
+			p.Timestamp = t
+		}
 	}
 	delete(kv, "time")
 	delete(kv, "level")

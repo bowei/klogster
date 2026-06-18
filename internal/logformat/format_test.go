@@ -111,6 +111,9 @@ func TestSlogTextParse(t *testing.T) {
 		if p.Message != tt.message {
 			t.Errorf("SlogText.Parse message: got %q, want %q (line=%q)", p.Message, tt.message, tt.line)
 		}
+		if p.Timestamp.IsZero() {
+			t.Errorf("SlogText.Parse timestamp should not be zero (line=%q)", tt.line)
+		}
 	}
 }
 
@@ -131,6 +134,15 @@ func TestSlogTextFields(t *testing.T) {
 	}
 	if _, ok := p.Fields["msg"]; ok {
 		t.Error("Fields should not contain 'msg'")
+	}
+}
+
+func TestSlogTextTimestamp(t *testing.T) {
+	f := logformat.SlogText{}
+	p := f.Parse(`time=2024-01-16T10:30:00Z level=INFO msg="hello"`)
+	want := "2024-01-16T10:30:00Z"
+	if got := p.Timestamp.UTC().Format("2006-01-02T15:04:05Z"); got != want {
+		t.Errorf("SlogText.Parse timestamp: got %q, want %q", got, want)
 	}
 }
 
@@ -187,6 +199,31 @@ func TestSlogJSONParse(t *testing.T) {
 	}
 }
 
+func TestSlogJSONFields(t *testing.T) {
+	f := logformat.SlogJSON{}
+	p := f.Parse(`{"time":"2024-01-16T10:00:00Z","level":"INFO","msg":"hello","port":"8080","host":"localhost"}`)
+	if p.Fields["port"] != "8080" {
+		t.Errorf("Fields[port] = %q, want %q", p.Fields["port"], "8080")
+	}
+	if p.Fields["host"] != "localhost" {
+		t.Errorf("Fields[host] = %q, want %q", p.Fields["host"], "localhost")
+	}
+	for _, key := range []string{"time", "level", "msg", "source"} {
+		if _, ok := p.Fields[key]; ok {
+			t.Errorf("Fields should not contain %q", key)
+		}
+	}
+}
+
+func TestKlogTimestamp(t *testing.T) {
+	// klog format encodes month/day but not year, so timestamp is not parsed.
+	f := logformat.Klog{}
+	p := f.Parse("I0116 10:00:00.000000 1234 server.go:42] started")
+	if !p.Timestamp.IsZero() {
+		t.Errorf("Klog.Parse timestamp: got %v, want zero", p.Timestamp)
+	}
+}
+
 // ---- StdLog -------------------------------------------------------------
 
 func TestStdLogDetect(t *testing.T) {
@@ -236,6 +273,39 @@ func TestStdLogParse(t *testing.T) {
 		}
 		if p.Timestamp.IsZero() {
 			t.Errorf("StdLog.Parse timestamp should not be zero (line=%q)", tt.line)
+		}
+	}
+}
+
+// ---- Unstructured -------------------------------------------------------
+
+func TestUnstructuredParse(t *testing.T) {
+	tests := []struct {
+		line  string
+		level string
+	}{
+		{"INFO server started", "INFO"},
+		{"ERROR connection failed", "ERROR"},
+		{"WARN disk usage high", "WARN"},
+		{"DEBUG cache miss", "DEBUG"},
+		{"plain message without level", "OTHER"},
+		{"", "OTHER"},
+	}
+	for _, tt := range tests {
+		// unstructured is the Detector's fallback; access it via Detector before format locks in.
+		d := &logformat.Detector{}
+		p := d.Parse(tt.line)
+		if p.Level != tt.level {
+			t.Errorf("unstructured.Parse level: got %q, want %q (line=%q)", p.Level, tt.level, tt.line)
+		}
+		if p.Message != tt.line {
+			t.Errorf("unstructured.Parse message: got %q, want %q", p.Message, tt.line)
+		}
+		if p.Raw != tt.line {
+			t.Errorf("unstructured.Parse raw: got %q, want %q", p.Raw, tt.line)
+		}
+		if !p.Timestamp.IsZero() {
+			t.Errorf("unstructured.Parse timestamp: got %v, want zero", p.Timestamp)
 		}
 	}
 }
@@ -292,6 +362,37 @@ func TestDetectorAutoDetection(t *testing.T) {
 				t.Errorf("FormatName() = %q, want %q", got, tt.wantFormat)
 			}
 		})
+	}
+}
+
+func TestDetectorSamplingPeriod(t *testing.T) {
+	// Lines fed before format locks in (< sampleSize=10) are parsed as unstructured.
+	d := &logformat.Detector{}
+	line := `time=2024-01-16T10:00:00Z level=INFO msg="hello"`
+	p := d.Parse(line)
+	// During sampling, level comes from extractLevelFromMessage, not slog-text parser.
+	if p.Raw != line {
+		t.Errorf("sampling period: Raw = %q, want %q", p.Raw, line)
+	}
+	if d.FormatName() != "unstructured" {
+		t.Errorf("FormatName during sampling = %q, want %q", d.FormatName(), "unstructured")
+	}
+}
+
+func TestDetectorNoMajority(t *testing.T) {
+	// When the best-matching format covers fewer than half the sample lines,
+	// the detector falls back to unstructured. 4 klog lines out of 10 = 40% < 50%.
+	d := &logformat.Detector{}
+	klogLine := "I0116 10:00:00.000000 1234 server.go:42] message"
+	plainLine := "just a plain log line"
+	for i := 0; i < 4; i++ {
+		d.Parse(klogLine)
+	}
+	for i := 0; i < 6; i++ {
+		d.Parse(plainLine)
+	}
+	if got := d.FormatName(); got != "unstructured" {
+		t.Errorf("FormatName with no majority = %q, want %q", got, "unstructured")
 	}
 }
 

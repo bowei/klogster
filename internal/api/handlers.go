@@ -80,6 +80,9 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		parsed := det.Parse(inner)
+		if tsStr == "" && !parsed.Timestamp.IsZero() {
+			tsStr = parsed.Timestamp.UTC().Format(time.RFC3339)
+		}
 		result = append(result, parsedLogLine{
 			Timestamp: tsStr,
 			Level:     parsed.Level,
