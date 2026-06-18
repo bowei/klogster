@@ -4,8 +4,6 @@
 // the timestamp of the topmost visible line and scroll every other unlocked
 // panel so that its nearest timestamp is at the top.
 
-let syncInProgress = false;
-
 /**
  * Returns the ISO timestamp string of the topmost visible log line in the
  * given panel log element, or null if none found.
@@ -101,7 +99,11 @@ export function attachScrollSync(logEl, getOtherLogs, isLocked) {
   let debounceTimer = null;
 
   logEl.addEventListener('scroll', () => {
-    if (syncInProgress) return;
+    // Ignore scroll events that we ourselves triggered programmatically.
+    if (logEl._programmaticScroll) {
+      logEl._programmaticScroll = false;
+      return;
+    }
     if (!isLocked()) return;
 
     clearTimeout(debounceTimer);
@@ -109,17 +111,18 @@ export function attachScrollSync(logEl, getOtherLogs, isLocked) {
       const anchorTs = topVisibleTimestamp(logEl);
       if (!anchorTs) return;
 
-      syncInProgress = true;
       requestAnimationFrame(() => {
         for (const other of getOtherLogs()) {
           if (other === logEl) continue;
           if (!other._scrollLocked) continue;
           const span = findClosestSpan(other, anchorTs);
           if (span) {
+            // Set the flag before scrollIntoView so the resulting scroll event
+            // is suppressed on the target panel and does not cascade back.
+            other._programmaticScroll = true;
             span.scrollIntoView({ block: 'start', behavior: 'instant' });
           }
         }
-        syncInProgress = false;
       });
     }, 100);
   }, { passive: true });
