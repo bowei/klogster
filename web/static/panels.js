@@ -222,22 +222,41 @@ function applyPanelFocus(tab) {
 
   const visible = new Set();
   const { contextType, contextAmount, contextDirection } = focusState;
-  for (const idx of matchIdxs) {
-    visible.add(idx);
-    if (contextType === 'line') {
-      const before = contextDirection !== 'after'  ? contextAmount : 0;
-      const after  = contextDirection !== 'before' ? contextAmount : 0;
+
+  if (contextType === 'line') {
+    const before = contextDirection !== 'after'  ? contextAmount : 0;
+    const after  = contextDirection !== 'before' ? contextAmount : 0;
+    for (const idx of matchIdxs) {
       for (let i = Math.max(0, idx - before); i <= Math.min(entries.length - 1, idx + after); i++)
         visible.add(i);
-    } else {
-      const anchor = new Date(entries[idx].dataset.ts ?? '').getTime();
+    }
+  } else {
+    // Parse timestamps once (O(n)) rather than re-parsing for every match (was O(n×m)).
+    const timestamps = entries.map(e => e.dataset.ts ? new Date(e.dataset.ts).getTime() : 0);
+    const before = contextDirection !== 'after'  ? contextAmount * 1000 : 0;
+    const after  = contextDirection !== 'before' ? contextAmount * 1000 : 0;
+
+    for (const idx of matchIdxs) {
+      visible.add(idx);
+      const anchor = timestamps[idx];
       if (!anchor) continue;
-      const before = contextDirection !== 'after'  ? contextAmount * 1000 : 0;
-      const after  = contextDirection !== 'before' ? contextAmount * 1000 : 0;
-      for (let i = 0; i < entries.length; i++) {
-        const t = new Date(entries[i].dataset.ts ?? '').getTime();
-        if (t >= anchor - before && t <= anchor + after) visible.add(i);
+
+      // Binary search for the first entry inside the window (O(log n) per match).
+      const lo = anchor - before;
+      let left = 0, right = idx;
+      while (left < right) {
+        const mid = (left + right) >> 1;
+        if (timestamps[mid] < lo) left = mid + 1; else right = mid;
       }
+
+      const hi = anchor + after;
+      let rLeft = idx, rRight = entries.length - 1;
+      while (rLeft < rRight) {
+        const mid = (rLeft + rRight + 1) >> 1;
+        if (timestamps[mid] > hi) rRight = mid - 1; else rLeft = mid;
+      }
+
+      for (let i = left; i <= rLeft; i++) visible.add(i);
     }
   }
 
