@@ -21,9 +21,9 @@ function notifyStateChanged() {
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
-function relativeTime(isoTs) {
-  if (!isoTs) return '—';
-  const secs = (Date.now() - new Date(isoTs).getTime()) / 1000;
+function relativeTime(ms) {
+  if (!ms) return '—';
+  const secs = (Date.now() - ms) / 1000;
   if (secs < 5) return 'just now';
   if (secs < 60) return `${Math.floor(secs)}s ago`;
   if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
@@ -31,7 +31,7 @@ function relativeTime(isoTs) {
 }
 
 function updateFooter(tab) {
-  tab.footerEl.textContent = `${tab.lineCount.toLocaleString()} lines · last: ${relativeTime(tab.lastTs)}`;
+  tab.footerEl.textContent = `${tab.lineCount.toLocaleString()} lines · last: ${relativeTime(tab.lastTsMs)}`;
 }
 
 setInterval(() => {
@@ -866,7 +866,7 @@ export function openPanel(group, ns, pod, container, _onClose) {
   const tab = {
     id: tabId, group, ns, pod, container,
     el, logEl, wrapEl, crosshairEl, footerEl, filterBtn,
-    lineCount: 0, lastTs: null, filters: [], hasLevel: false,
+    lineCount: 0, lastTs: null, lastTsMs: 0, filters: [], hasLevel: false,
     focusMatchCount: 0,
   };
 
@@ -955,7 +955,7 @@ export function appendLines(messages) {
     for (const { entry, ts } of entries) {
       frag.appendChild(entry);
       tab.lineCount++;
-      if (ts) tab.lastTs = ts;
+      if (ts) { tab.lastTs = ts; tab.lastTsMs = new Date(ts).getTime(); }
     }
     logEl.appendChild(frag); // single DOM mutation for the whole batch
 
@@ -1001,7 +1001,11 @@ export function prependLines(group, ns, pod, container, lines) {
 
   if (!tab.lastTs) {
     for (let i = lines.length - 1; i >= 0; i--) {
-      if (lines[i].ts) { tab.lastTs = lines[i].ts; break; }
+      if (lines[i].ts) {
+        tab.lastTs = lines[i].ts;
+        tab.lastTsMs = new Date(lines[i].ts).getTime();
+        break;
+      }
     }
   }
   updateFooter(tab);
