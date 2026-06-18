@@ -29,12 +29,23 @@ func (m *Manager) Events() <-chan PodEvent {
 func (m *Manager) Run(ctx context.Context) {
 	var wg sync.WaitGroup
 	for _, group := range m.cfg {
-		for _, sel := range group.Selectors {
+		group := group
+		if group.K8s != nil {
+			for _, sel := range group.K8s.Selectors {
+				sel := sel
+				wg.Add(1)
+				w := NewPodWatcher(group.Name, sel.Namespace, sel.Labels, sel.Containers, m.client, m.events)
+				go func() {
+					defer wg.Done()
+					w.Run(ctx)
+				}()
+			}
+		} else if group.File != nil {
 			wg.Add(1)
-			w := NewPodWatcher(group.Name, sel.Namespace, sel.Labels, sel.Containers, m.client, m.events)
+			fw := &FileWatcher{group: group, events: m.events}
 			go func() {
 				defer wg.Done()
-				w.Run(ctx)
+				fw.Run(ctx)
 			}()
 		}
 	}

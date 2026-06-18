@@ -25,6 +25,7 @@ type PodEvent struct {
 	Namespace     string
 	PodName       string
 	ContainerName string
+	FilePath      string // non-empty for file sources; empty for Kubernetes sources
 }
 
 type PodWatcher struct {

@@ -1,7 +1,8 @@
 # klogster
 
-klogster is a GUI app written in Go that pulls logs from a Kubernetes cluster from a
-set of Pods given by a list of namespace, pod label selectors.
+klogster is a GUI app written in Go that streams logs from multiple sources —
+Kubernetes pods selected by namespace and label, or local files — and displays them
+side-by-side in a browser UI.
 
 ![klogster demo showing three log panels with timestamped entries](web/static/screenshot.png)
 
@@ -27,44 +28,66 @@ make test-js    # JavaScript tests only (requires Node.js ≥ 18)
 
 ```yaml
 - name: serverPods
-  selectors:
-    - namespace: server-ns
-      labels:
-        app: server
+  k8s:
+    selectors:
+      - namespace: server-ns
+        labels:
+          app: server
 
 - name: databasePods
-  selectors:
-    - namespace: db-ns
-      labels:
-        app: mysql
-    - namespace: backup-db-ns
-      labels:
-        app: postgres
+  k8s:
+    selectors:
+      - namespace: db-ns
+        labels:
+          app: mysql
+      - namespace: backup-db-ns
+        labels:
+          app: postgres
 
 - name: mixedPods
-  selectors:
-    - namespace: app-ns
-      labels:
-        app: worker
-      containers:        # optional: stream only these containers
-        - app
-        - sidecar
+  k8s:
+    selectors:
+      - namespace: app-ns
+        labels:
+          app: worker
+        containers:        # optional: stream only these containers
+          - app
+          - sidecar
+
+- name: localFile
+  file:
+    path: /var/log/myapp/myapp.log
 ```
 
-The `containers` field is optional. When omitted, klogster streams all containers
-in each matching pod. Each container is tracked as a separate log source.
+Each log group must have exactly one source — `k8s` or `file`.
+
+For `k8s` groups, `containers` is optional. When omitted, klogster streams all
+containers in each matching pod. Each container is tracked as a separate log source.
+
+For `file` groups, klogster tails the file at the given path and shows it as a
+single stream. No kubeconfig is needed if all groups use `file`.
 
 ## Functionality
 
-klogster connects to the Kubernetes cluster configured in the standard kubeconfig.
-Logs are streamed from matching pods and saved to `-logdir` organized as:
+**Kubernetes sources** connect to the cluster in the standard kubeconfig. Logs are
+streamed from matching pods. The kubeconfig is only loaded when at least one `k8s`
+group is configured.
+
+**File sources** tail a local file, polling for new content every 250 ms. No
+kubeconfig is required.
+
+All log lines are saved to `-logdir` and kept in memory:
 
 ```
-<logdir>/<log group name>/<namespace>:<pod name>:<container name>
+# Kubernetes pod/container
+<logdir>/<group>/<namespace>:<pod>:<container>
+
+# Local file
+<logdir>/<group>/local:<filename>:tail
 ```
 
-The last 10,000 lines per pod are kept in memory for fast serving; the full stream is
-appended to disk.
+The last 10,000 lines per source are kept in memory for fast serving; the full
+stream is appended to disk.
 
 ## Demo mode
 

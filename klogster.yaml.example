@@ -1,14 +1,20 @@
 - name: serverPods
-  selectors:
-    - namespace: server-ns
-      labels:
-        app: server
+  k8s:
+    selectors:
+      - namespace: server-ns
+        labels:
+          app: server
 
 - name: databasePods
-  selectors:
-    - namespace: db-ns
-      labels:
-        app: mysql
-    - namespace: backup-db-ns
-      labels:
-        app: postgres
+  k8s:
+    selectors:
+      - namespace: db-ns
+        labels:
+          app: mysql
+      - namespace: backup-db-ns
+        labels:
+          app: postgres
+
+- name: localFile
+  file:
+    path: /var/log/myapp/myapp.log

@@ -51,18 +51,24 @@ func Run() {
 			log.Fatalf("loading config: %v", err)
 		}
 
-		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-		kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-			loadingRules,
-			&clientcmd.ConfigOverrides{},
-		)
-		restConfig, err := kubeConfig.ClientConfig()
-		if err != nil {
-			log.Fatalf("building kube config: %v", err)
-		}
-		k8sClient, err := kubernetes.NewForConfig(restConfig)
-		if err != nil {
-			log.Fatalf("building kube client: %v", err)
+		var k8sClient kubernetes.Interface
+		for _, g := range cfg {
+			if g.K8s != nil {
+				loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+				kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+					loadingRules,
+					&clientcmd.ConfigOverrides{},
+				)
+				restConfig, err := kubeConfig.ClientConfig()
+				if err != nil {
+					log.Fatalf("building kube config: %v", err)
+				}
+				k8sClient, err = kubernetes.NewForConfig(restConfig)
+				if err != nil {
+					log.Fatalf("building kube client: %v", err)
+				}
+				break
+			}
 		}
 
 		streamerMgr = streamer.NewManager(k8sClient, store, h)
@@ -159,7 +165,7 @@ func demoLogTemplates(p demoPod) []string {
 				`[Note] Query_time: 0.002341  Lock_time: 0.000102 Rows_sent: 1 Rows_examined: 1`,
 				`[Note] Got connection id 1043`,
 				`[Warning] Aborted connection 1041 to db: 'appdb' user: 'appuser' host: '10.0.1.5' (Got an error reading communication packets)`,
-				`[Note] Query_time: 0.045182  Lock_time: 0.001234 Rows_sent: 250 Rows_examined: 12483`,
+				`[Note] Query_time: 0.045182  Lock_time: 0.000041 Rows_sent: 0 Rows_examined: 0`,
 				`[Note] InnoDB: page_cleaner: 1000ms intended loop took 1234ms. The settings might not be optimal.`,
 				`[Note] Got connection id 1044`,
 				`[Note] Query_time: 0.001002  Lock_time: 0.000088 Rows_sent: 1 Rows_examined: 1`,

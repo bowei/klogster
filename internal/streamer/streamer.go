@@ -15,8 +15,8 @@ import (
 	"github.com/bowei/klogster/internal/storage"
 )
 
-// logOpener abstracts opening a pod log stream. The real implementation calls
-// the Kubernetes API; tests substitute a fake reader.
+// logOpener abstracts opening a log stream. The k8s implementation calls the
+// Kubernetes API; the file implementation polls a local file.
 type logOpener interface {
 	open(ctx context.Context) (io.ReadCloser, error)
 }
@@ -48,21 +48,16 @@ type PodStreamer struct {
 	stats         *Stats
 }
 
-func New(groupName, namespace, podName, containerName string, client kubernetes.Interface, store *storage.Store, h *hub.Hub, stats *Stats) *PodStreamer {
+func newWithOpener(groupName, namespace, podName, containerName string, opener logOpener, store *storage.Store, h *hub.Hub, stats *Stats) *PodStreamer {
 	return &PodStreamer{
 		groupName:     groupName,
 		namespace:     namespace,
 		podName:       podName,
 		containerName: containerName,
-		opener: &k8sLogOpener{
-			client:        client,
-			namespace:     namespace,
-			podName:       podName,
-			containerName: containerName,
-		},
-		store: store,
-		hub:   h,
-		stats: stats,
+		opener:        opener,
+		store:         store,
+		hub:           h,
+		stats:         stats,
 	}
 }
 
@@ -82,6 +77,9 @@ func (s *PodStreamer) Run(ctx context.Context) error {
 		line := scanner.Text()
 		ts, inner := splitK8sLine(line)
 		parsed := detector.Parse(inner)
+		if ts.IsZero() {
+			ts = parsed.Timestamp
+		}
 		s.stats.add(parsed.Level)
 		s.store.Append(s.groupName, s.namespace, s.podName, s.containerName, line)
 		s.hub.Broadcast(hub.LogLine{

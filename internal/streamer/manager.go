@@ -78,7 +78,18 @@ func (m *Manager) startStreamer(ctx context.Context, ev watcher.PodEvent) {
 	m.active[k] = cancel
 	m.mu.Unlock()
 
-	s := New(ev.GroupName, ev.Namespace, ev.PodName, ev.ContainerName, m.client, m.store, m.hub, m.stats)
+	var opener logOpener
+	if ev.FilePath != "" {
+		opener = &fileLogOpener{path: ev.FilePath}
+	} else {
+		opener = &k8sLogOpener{
+			client:        m.client,
+			namespace:     ev.Namespace,
+			podName:       ev.PodName,
+			containerName: ev.ContainerName,
+		}
+	}
+	s := newWithOpener(ev.GroupName, ev.Namespace, ev.PodName, ev.ContainerName, opener, m.store, m.hub, m.stats)
 	go func() {
 		backoff := time.Second
 		for {
