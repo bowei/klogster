@@ -7,15 +7,19 @@
 /**
  * Returns the ISO timestamp string of the topmost visible log line in the
  * given panel log element, or null if none found.
+ *
+ * Uses elementFromPoint for an O(1) hit-test instead of allocating a NodeList
+ * and scanning every entry with getBoundingClientRect.
  */
 function topVisibleTimestamp(logEl) {
-  const top = logEl.getBoundingClientRect().top;
-  const spans = logEl.querySelectorAll('.log-entry[data-ts]');
-  for (const span of spans) {
-    const rect = span.getBoundingClientRect();
-    if (rect.bottom > top) {
-      return span.dataset.ts || null;
-    }
+  const rect = logEl.getBoundingClientRect();
+  // Probe just inside the top-left corner of the scroll area. Step down by 1px
+  // until we land on an element (the first pixel may be a border/gap).
+  for (let dy = 0; dy < 4; dy++) {
+    const el = document.elementFromPoint(rect.left + 2, rect.top + dy);
+    if (!el) continue;
+    const entry = el.closest('.log-entry[data-ts]');
+    if (entry) return entry.dataset.ts || null;
   }
   return null;
 }
