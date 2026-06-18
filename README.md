@@ -124,6 +124,12 @@ For logging formats that are structured fields should be display like this:
   restore the exact set of open panels, active tab, per-panel filters, and
   focus state on reload.
 
+### Pause / Resume
+
+The **⏸** button (top-right, left of "+ Pod") pauses log updates to all panels.
+While paused, the button turns amber and shows ▶ with a count of buffered lines.
+Clicking ▶ flushes the buffer and resumes live updates — no messages are dropped.
+
 ### Focus dialog
 
 The Focus button (left of the tab bar) filters all panels simultaneously.

@@ -14,6 +14,7 @@
       <button id="btn-help" title="Help">?</button>
       <button id="btn-focus" title="Focus all panels on a regexp pattern">Focus</button>
       <div id="tab-bar"></div>
+      <button id="btn-pause" title="Pause log updates">⏸</button>
       <button id="btn-open-sidebar" title="Browse pods">＋ Pod</button>
     </header>
     <div id="sidebar" class="hidden">
@@ -98,6 +99,7 @@
           <dt>Panel close (✕)</dt><dd>Close an individual log panel.</dd>
           <dt>Drag tabs</dt><dd>Reorder panels by dragging their header tabs.</dd>
           <dt>Lock / Unlock scroll</dt><dd>Toggle live-tail for a panel. When unlocked, new lines scroll into view automatically.</dd>
+          <dt>⏸ / ▶ Pause / Resume</dt><dd>Pause log updates to all panels. Incoming lines are buffered and flushed when you resume — no messages are dropped.</dd>
         </dl>
       </section>
       <section>

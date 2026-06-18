@@ -12,6 +12,9 @@ let wsReconnectTimer = null;
 let openPanelKeys = new Set(); // "group/ns/pod/container"
 let restoringState = false;
 
+let paused = false;
+let pauseBuffer = [];
+
 function panelKey(group, ns, pod, container) {
   return `${group}/${ns}/${pod}/${container}`;
 }
@@ -55,9 +58,14 @@ function connectWS() {
   ws.addEventListener('message', e => {
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }
-    const { group, ns, pod, container, ts, message, fields, level } = msg;
+    const { group, ns, pod, container, message } = msg;
     if (group && ns && pod && container && message !== undefined) {
-      appendLine(group, ns, pod, container, ts || '', message, fields || null, level || '');
+      if (paused) {
+        pauseBuffer.push(msg);
+        updatePauseButton();
+      } else {
+        appendLine(group, ns, pod, container, msg.ts || '', message, msg.fields || null, msg.level || '');
+      }
     }
   });
 
@@ -224,6 +232,34 @@ function initTheme() {
   applyTheme(saved);
 }
 
+// ── Pause / Resume ─────────────────────────────────────────────────────────
+
+function updatePauseButton() {
+  const btn = document.getElementById('btn-pause');
+  if (!btn) return;
+  if (paused) {
+    btn.classList.add('paused');
+    btn.textContent = '▶';
+    const n = pauseBuffer.length;
+    btn.title = n > 0 ? `Resume (${n} lines buffered)` : 'Resume log updates';
+  } else {
+    btn.classList.remove('paused');
+    btn.textContent = '⏸';
+    btn.title = 'Pause log updates';
+  }
+}
+
+function togglePause() {
+  paused = !paused;
+  if (!paused) {
+    for (const msg of pauseBuffer) {
+      appendLine(msg.group, msg.ns, msg.pod, msg.container, msg.ts || '', msg.message, msg.fields || null, msg.level || '');
+    }
+    pauseBuffer = [];
+  }
+  updatePauseButton();
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 
 function init() {
@@ -244,6 +280,8 @@ function init() {
     maybeSaveState();
   });
   document.addEventListener('panels:state-changed', () => maybeSaveState());
+
+  document.getElementById('btn-pause').addEventListener('click', togglePause);
 
   document.getElementById('btn-open-sidebar').addEventListener('click', () => {
     document.getElementById('sidebar').classList.remove('hidden');

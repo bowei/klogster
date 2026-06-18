@@ -641,6 +641,25 @@ body {
 #btn-focus:hover { color: var(--text); border-color: var(--text-dim); }
 #btn-focus.active { color: var(--ts-color); border-color: var(--ts-color); }
 
+#btn-pause {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  width: 28px;
+  height: 22px;
+  border-radius: 3px;
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#btn-pause:hover { color: var(--text); border-color: var(--text-dim); }
+#btn-pause.paused { color: #e5a50a; border-color: #e5a50a; }
+#btn-pause.paused:hover { color: #f0b429; border-color: #f0b429; }
+
 #btn-open-sidebar {
   background: var(--accent);
   border: none;
