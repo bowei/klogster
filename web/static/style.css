@@ -50,6 +50,108 @@
   --field-color: #5b6ab8;
 }
 
+/* Monokai — VSCode / Sublime Text */
+[data-theme="monokai"] {
+  --bg: #272822;
+  --bg2: #2d2e27;
+  --bg3: #3e3d32;
+  --border: #5a594e;
+  --text: #f8f8f2;
+  --text-dim: #75715e;
+  --accent: #66d9e8;
+  --accent-hover: #7ae8f5;
+  --tab-active-bg: #272822;
+  --tab-inactive-bg: #3e3d32;
+  --ts-color: #a6e22e;
+  --sep-color: #5a594e;
+  --field-color: #ae81ff;
+}
+
+/* One Dark — Atom / VSCode One Dark Pro */
+[data-theme="one-dark"] {
+  --bg: #282c34;
+  --bg2: #21252b;
+  --bg3: #2c313a;
+  --border: #3e4452;
+  --text: #abb2bf;
+  --text-dim: #5c6370;
+  --accent: #61afef;
+  --accent-hover: #73bdf5;
+  --tab-active-bg: #282c34;
+  --tab-inactive-bg: #2c313a;
+  --ts-color: #56b6c2;
+  --sep-color: #3e4452;
+  --field-color: #e06c75;
+}
+
+/* Dracula — VSCode / many editors */
+[data-theme="dracula"] {
+  --bg: #282a36;
+  --bg2: #21222c;
+  --bg3: #44475a;
+  --border: #6272a4;
+  --text: #f8f8f2;
+  --text-dim: #6272a4;
+  --accent: #bd93f9;
+  --accent-hover: #cba7fa;
+  --tab-active-bg: #282a36;
+  --tab-inactive-bg: #44475a;
+  --ts-color: #50fa7b;
+  --sep-color: #44475a;
+  --field-color: #8be9fd;
+}
+
+/* Gruvbox — Vim */
+[data-theme="gruvbox"] {
+  --bg: #282828;
+  --bg2: #3c3836;
+  --bg3: #504945;
+  --border: #665c54;
+  --text: #ebdbb2;
+  --text-dim: #a89984;
+  --accent: #458588;
+  --accent-hover: #4e9ea2;
+  --tab-active-bg: #282828;
+  --tab-inactive-bg: #504945;
+  --ts-color: #b8bb26;
+  --sep-color: #665c54;
+  --field-color: #fabd2f;
+}
+
+/* Nord — VSCode / Vim / many editors */
+[data-theme="nord"] {
+  --bg: #2e3440;
+  --bg2: #3b4252;
+  --bg3: #434c5e;
+  --border: #4c566a;
+  --text: #d8dee9;
+  --text-dim: #4c566a;
+  --accent: #88c0d0;
+  --accent-hover: #9ecfde;
+  --tab-active-bg: #2e3440;
+  --tab-inactive-bg: #434c5e;
+  --ts-color: #a3be8c;
+  --sep-color: #4c566a;
+  --field-color: #81a1c1;
+}
+
+/* Zenburn — Emacs classic */
+[data-theme="zenburn"] {
+  --bg: #3f3f3f;
+  --bg2: #4f4f4f;
+  --bg3: #5f5f5f;
+  --border: #6f6f6f;
+  --text: #dcdccc;
+  --text-dim: #9f9f9f;
+  --accent: #8cd0d3;
+  --accent-hover: #a0dde0;
+  --tab-active-bg: #3f3f3f;
+  --tab-inactive-bg: #5f5f5f;
+  --ts-color: #7f9f7f;
+  --sep-color: #6f6f6f;
+  --field-color: #f0dfaf;
+}
+
 body {
   background: var(--bg);
   color: var(--text);
@@ -142,7 +244,7 @@ body {
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: 6px;
-  width: 320px;
+  width: 360px;
   max-width: calc(100vw - 32px);
   display: flex;
   flex-direction: column;
@@ -177,7 +279,8 @@ body {
 
 .theme-options {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 10px 12px;
 }
 
 .theme-option {
@@ -264,6 +367,126 @@ body {
   width: 60%;
   height: 2px;
   background: #7c4daa;
+  border-radius: 1px;
+}
+
+/* Monokai swatch */
+.theme-swatch-monokai { background: #272822; }
+.theme-swatch-monokai::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: #2d2e27;
+  border-bottom: 1px solid #5a594e;
+}
+.theme-swatch-monokai::after {
+  content: '';
+  position: absolute;
+  bottom: 6px; left: 6px;
+  width: 60%;
+  height: 2px;
+  background: #a6e22e;
+  border-radius: 1px;
+}
+
+/* One Dark swatch */
+.theme-swatch-one-dark { background: #282c34; }
+.theme-swatch-one-dark::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: #21252b;
+  border-bottom: 1px solid #3e4452;
+}
+.theme-swatch-one-dark::after {
+  content: '';
+  position: absolute;
+  bottom: 6px; left: 6px;
+  width: 60%;
+  height: 2px;
+  background: #56b6c2;
+  border-radius: 1px;
+}
+
+/* Dracula swatch */
+.theme-swatch-dracula { background: #282a36; }
+.theme-swatch-dracula::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: #21222c;
+  border-bottom: 1px solid #6272a4;
+}
+.theme-swatch-dracula::after {
+  content: '';
+  position: absolute;
+  bottom: 6px; left: 6px;
+  width: 60%;
+  height: 2px;
+  background: #bd93f9;
+  border-radius: 1px;
+}
+
+/* Gruvbox swatch */
+.theme-swatch-gruvbox { background: #282828; }
+.theme-swatch-gruvbox::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: #3c3836;
+  border-bottom: 1px solid #665c54;
+}
+.theme-swatch-gruvbox::after {
+  content: '';
+  position: absolute;
+  bottom: 6px; left: 6px;
+  width: 60%;
+  height: 2px;
+  background: #b8bb26;
+  border-radius: 1px;
+}
+
+/* Nord swatch */
+.theme-swatch-nord { background: #2e3440; }
+.theme-swatch-nord::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: #3b4252;
+  border-bottom: 1px solid #4c566a;
+}
+.theme-swatch-nord::after {
+  content: '';
+  position: absolute;
+  bottom: 6px; left: 6px;
+  width: 60%;
+  height: 2px;
+  background: #a3be8c;
+  border-radius: 1px;
+}
+
+/* Zenburn swatch */
+.theme-swatch-zenburn { background: #3f3f3f; }
+.theme-swatch-zenburn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: #4f4f4f;
+  border-bottom: 1px solid #6f6f6f;
+}
+.theme-swatch-zenburn::after {
+  content: '';
+  position: absolute;
+  bottom: 6px; left: 6px;
+  width: 60%;
+  height: 2px;
+  background: #7f9f7f;
   border-radius: 1px;
 }
 

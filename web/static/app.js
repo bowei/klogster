@@ -204,7 +204,7 @@ async function restoreFromHash() {
 // ── Theme ──────────────────────────────────────────────────────────────────
 
 const THEME_KEY = 'klogster-theme';
-const VALID_THEMES = ['dark', 'light', 'pastel'];
+const VALID_THEMES = ['dark', 'light', 'pastel', 'monokai', 'one-dark', 'dracula', 'gruvbox', 'nord', 'zenburn'];
 
 function applyTheme(theme) {
   if (!VALID_THEMES.includes(theme)) theme = 'dark';
