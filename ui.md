@@ -1,0 +1,150 @@
+# klogster UI Reference
+
+## Header
+
+### Connection status dot
+A small colored circle in the header shows WebSocket state: gray while connecting, green when live, red on error. It reconnects automatically with exponential backoff up to 30-second intervals.
+
+### Pause / Resume (⏸ / ▶)
+Pauses all live log updates across every panel. New lines arriving during the pause are buffered in memory; the button label shows the count of buffered lines. Clicking ▶ flushes the buffer and resumes tailing. Useful for reading a burst of activity without the log scrolling away.
+
+### Focus button
+Opens the focus dialog (see [Focus](#focus)). The button turns accent-colored when any focus pattern is active.
+
+### + Pod button
+Toggles the pod browser sidebar (see [Pod Browser](#pod-browser)).
+
+### ⚙ Settings
+Opens the theme picker (see [Themes](#themes)).
+
+### ? Help
+Opens a keyboard shortcut and feature reference dialog. Pressing Escape closes it.
+
+---
+
+## Pod Browser
+
+A slide-in sidebar on the right listing every discovered pod organized by log group. Polls `/api/groups` every 10 seconds to stay current.
+
+- Clicking a pod item opens a new panel for that pod/container and subscribes to its live stream.
+- Pod items already open are highlighted in the accent color.
+- On open, 500 lines of recent history are back-filled so the panel is not empty.
+- The ✕ button at the top of the sidebar closes it.
+
+---
+
+## Panels
+
+### Tabs
+Each open pod gets a tab. The active tab has a colored top border. Tabs show the truncated pod path; hovering shows the full `group / namespace / pod / container` path in a tooltip.
+
+- **Clicking a tab** switches to that panel.
+- **Dragging a tab** over another reorders them.
+- **✕ on a tab** closes the panel and unsubscribes from the log stream.
+
+### Panel label
+The toolbar at the top of each panel shows the full `group / namespace / pod / container` path.
+
+### Log lines
+Each line shows:
+- **Timestamp** — formatted as `YYYY-MM-DD HH:MM:SS.ffffff`, fixed-width column on the left.
+- **Level badge** — colored `INFO` / `WARN` / `ERROR` / `FATAL` / `DEBUG` / `TRACE` badge, shown only when the log source emits structured levels.
+- **Message** — main log text, word-wrapped.
+- **Structured fields** — key: value pairs indented below the message when present (e.g. slog or JSON-structured logs).
+
+### Footer
+Shows `N lines · last: X ago` where the relative time (`seconds`, `minutes`, `hours`) updates every second. Gives a quick read on whether the log source is still active.
+
+### Auto-scroll (live tail)
+When the user is scrolled within 40 px of the bottom, new lines automatically scroll into view. Scrolling up disengages live tail; scrolling back to the bottom re-engages it.
+
+### Line pruning
+When a panel accumulates more than 5 000 lines, the oldest 1 000 are removed to keep memory and DOM size bounded.
+
+---
+
+## Scroll Synchronization
+
+### Sync / Free toggle (⟷)
+Each panel toolbar has a scroll-lock button. In **sync** mode (default) the panel participates in timestamp-aligned scrolling. In **free** mode it scrolls independently.
+
+### Debounced cross-panel sync
+When a locked panel is scrolled, klogster waits for scrolling to stop (100 ms of inactivity) before syncing the other locked panels. This avoids continuous DOM updates while the user is rapidly scrolling. Once the pause is detected, the top-most visible timestamp in the source panel is found, and every other locked panel jumps to its nearest matching timestamp using binary search.
+
+### Timestamp crosshair
+Hovering over any log line shows an orange horizontal line in all other panels at the position of the closest matching timestamp. If that timestamp is above or below the other panel's viewport, a small edge marker (▲ or ▼) appears at the top or bottom edge instead.
+
+---
+
+## Focus
+
+Focus filters all panels simultaneously, keeping only lines that match one or more regexp patterns plus an optional window of surrounding context.
+
+### Adding patterns
+Type a regexp in the input and click **Add** (or press Enter). Patterns are case-insensitive. An invalid regexp shows a red error message and is not added. Multiple patterns are ORed together.
+
+### Pattern list
+Active patterns are listed with a × button to remove each individually. Removing the last pattern clears focus entirely.
+
+### Context window
+Controls how many surrounding lines or seconds of log time are shown around each match:
+
+- **Type** — *Lines* (count-based) or *Seconds* (time-based).
+- **Amount** — number of lines (0–200) or seconds (0–3600).
+- **Direction** — *Around* (before and after), *Before*, or *After*.
+
+### Match counter
+While focus is active, the dialog shows `X of Y lines match` updated in real time across all panels.
+
+### Highlighting
+Matched text within visible lines is highlighted with a yellow background mark.
+
+### Applied to new lines
+Lines arriving from the live stream are immediately filtered and highlighted according to the current focus state.
+
+---
+
+## Per-Panel Filtering
+
+Each panel has its own independent filter stack, separate from the global focus.
+
+### Opening the filter dialog
+Click the **filter** button in a panel's toolbar. When filters are active the button shows the count. Only one filter dialog is open at a time.
+
+### Adding filters
+Choose **+ show** (include only matching lines) or **− hide** (hide matching lines), enter a regexp, and click **Add** or press Enter. Filters are case-insensitive.
+
+### Filter list
+Each filter shows a green **+** or red **−** badge indicating its type, and a × to remove it. An invalid regexp is shown in red and has no effect.
+
+### Closing
+Click outside the dialog or press Escape.
+
+---
+
+## Themes
+
+Nine color themes are available in the ⚙ settings dialog, each previewed with color swatches:
+
+- Dark (default)
+- Light
+- Pastel
+- Monokai
+- One Dark
+- Dracula
+- Gruvbox
+- Nord
+- Zenburn
+
+The selected theme is persisted in `localStorage` and applied immediately via a `data-theme` attribute on the document root.
+
+---
+
+## State Persistence
+
+The full UI state is encoded as base64 JSON in the URL hash and updated whenever panels are opened, closed, reordered, or filtered. Reloading the page or sharing the URL restores:
+
+- Which panels are open (pod identity, group, namespace, container)
+- Per-panel filters
+- Focus patterns and context settings
+- The active tab
