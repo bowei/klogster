@@ -15,8 +15,8 @@ async function openFirstPod(page) {
   // Sidebar auto-closes on pod click
   await expect(page.locator('#sidebar')).toHaveClass(/hidden/);
 
-  // At least one panel tab should appear
-  await expect(page.locator('#tab-bar .tab').first()).toBeVisible({ timeout: 5000 });
+  // At least one panel tab should appear inside a panel-group
+  await expect(page.locator('.panel-group-tabs .tab').first()).toBeVisible({ timeout: 5000 });
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -32,6 +32,7 @@ test.describe('page load', () => {
     await expect(page.locator('#btn-focus')).toBeVisible();
     await expect(page.locator('#btn-pause')).toBeVisible();
     await expect(page.locator('#btn-open-sidebar')).toBeVisible();
+    await expect(page.locator('#btn-add-panel')).toBeVisible();
     await expect(page.locator('#btn-config')).toBeVisible();
     await expect(page.locator('#btn-help')).toBeVisible();
   });
@@ -70,10 +71,10 @@ test.describe('sidebar', () => {
 });
 
 test.describe('log panels', () => {
-  test('opening a pod creates a tab', async ({ page }) => {
+  test('opening a pod creates a tab in a panel group', async ({ page }) => {
     await page.goto('/');
     await openFirstPod(page);
-    const tabs = page.locator('#tab-bar .tab');
+    const tabs = page.locator('.panel-group-tabs .tab');
     await expect(tabs).toHaveCount(1);
   });
 
@@ -92,10 +93,12 @@ test.describe('log panels', () => {
 
     const closeBtn = page.locator('.tab-close').first();
     await closeBtn.click();
-    await expect(page.locator('#tab-bar .tab')).toHaveCount(0);
+    await expect(page.locator('.panel-group-tabs .tab')).toHaveCount(0);
+    // panel group is also gone
+    await expect(page.locator('.panel-group')).toHaveCount(0);
   });
 
-  test('opening two pods creates two tabs', async ({ page }) => {
+  test('opening two pods creates two tabs in same panel group', async ({ page }) => {
     await page.goto('/');
 
     // Open sidebar and pick first pod
@@ -109,7 +112,66 @@ test.describe('log panels', () => {
     await expect(page.locator('.pod-item').nth(1)).toBeVisible({ timeout: 3000 });
     await page.locator('.pod-item').nth(1).click();
 
-    await expect(page.locator('#tab-bar .tab')).toHaveCount(2);
+    // Both tabs in the same panel group
+    await expect(page.locator('.panel-group')).toHaveCount(1);
+    await expect(page.locator('.panel-group-tabs .tab')).toHaveCount(2);
+  });
+
+  test('add panel button creates a new panel group', async ({ page }) => {
+    await page.goto('/');
+    await openFirstPod(page);
+    await expect(page.locator('.panel-group')).toHaveCount(1);
+
+    await page.click('#btn-add-panel');
+    await expect(page.locator('.panel-group')).toHaveCount(2);
+  });
+
+  test('opening a pod after add panel puts tab in new panel group', async ({ page }) => {
+    await page.goto('/');
+    await openFirstPod(page);
+
+    await page.click('#btn-add-panel');
+    await expect(page.locator('.panel-group')).toHaveCount(2);
+
+    // Open sidebar and pick second pod
+    await page.click('#btn-open-sidebar');
+    await expect(page.locator('.pod-item').nth(1)).toBeVisible({ timeout: 3000 });
+    await page.locator('.pod-item').nth(1).click();
+
+    // Each panel group should have one tab
+    const groups = page.locator('.panel-group');
+    await expect(groups).toHaveCount(2);
+    await expect(groups.nth(0).locator('.panel-group-tabs .tab')).toHaveCount(1);
+    await expect(groups.nth(1).locator('.panel-group-tabs .tab')).toHaveCount(1);
+  });
+
+  test('switching tabs changes visible log content', async ({ page }) => {
+    await page.goto('/');
+
+    // Open two pods into the same panel group
+    await page.click('#btn-open-sidebar');
+    await expect(page.locator('.pod-item').first()).toBeVisible({ timeout: 5000 });
+    await page.locator('.pod-item').nth(0).click();
+    await expect(page.locator('#sidebar')).toHaveClass(/hidden/);
+
+    await page.click('#btn-open-sidebar');
+    await page.locator('.pod-item').nth(1).click();
+
+    await expect(page.locator('.panel-group-tabs .tab')).toHaveCount(2);
+
+    // Click first tab — it should become active
+    await page.locator('.panel-group-tabs .tab').nth(0).click();
+    await expect(page.locator('.panel-group-tabs .tab').nth(0)).toHaveClass(/active/);
+    await expect(page.locator('.panel-group-tabs .tab').nth(1)).not.toHaveClass(/active/);
+  });
+
+  test('closing last tab in panel group removes the panel group', async ({ page }) => {
+    await page.goto('/');
+    await openFirstPod(page);
+    await expect(page.locator('.panel-group')).toHaveCount(1);
+
+    await page.locator('.tab-close').first().click();
+    await expect(page.locator('.panel-group')).toHaveCount(0);
   });
 });
 
@@ -229,12 +291,11 @@ test.describe('settings dialog', () => {
 });
 
 test.describe('state persistence', () => {
-  test('URL hash is set after opening a pod', async ({ page }) => {
+  test('URL hash is set after opening a pod and restores on reload', async ({ page }) => {
     await page.goto('/');
     await openFirstPod(page);
-    // State is saved to sessionStorage or URL hash; verify the page still has the tab after reload
+    // State is saved to URL hash; verify the tab is still present after reload
     await page.reload();
-    // Tabs should restore from saved state
-    await expect(page.locator('#tab-bar .tab').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.panel-group-tabs .tab').first()).toBeVisible({ timeout: 5000 });
   });
 });

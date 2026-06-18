@@ -1,4 +1,4 @@
-import { openPanel, closePanel, appendLine, prependLines, getPanelIds, applyFocusToAll, getSerializableState, restoreFilters, setActivePanelByKey } from './panels.js';
+import { openPanel, closePanel, addPanelGroup, appendLine, prependLines, getPanelIds, applyFocusToAll, getSerializableState, restoreFilters, setActivePanelByKey } from './panels.js';
 import { openFocusDialog, focusState, restoreFocusState } from './focus.js';
 import { saveState, loadState } from './state.js';
 
@@ -9,7 +9,9 @@ const WS_RECONNECT_MAX_MS = 30_000;
 let ws = null;
 let wsReconnectDelay = WS_RECONNECT_BASE_MS;
 let wsReconnectTimer = null;
-let openPanelKeys = new Set(); // "group/ns/pod/container"
+
+// Map<key, count> — ref-counted so the same log can be open in multiple panel groups
+const openPanelKeyCounts = new Map();
 let restoringState = false;
 
 let paused = false;
@@ -48,8 +50,8 @@ function connectWS() {
   ws.addEventListener('open', () => {
     wsReconnectDelay = WS_RECONNECT_BASE_MS;
     if (dot) dot.className = 'connected';
-    // Re-subscribe to all open panels after reconnect
-    for (const key of openPanelKeys) {
+    // Re-subscribe to all open logs after reconnect
+    for (const [key] of openPanelKeyCounts) {
       const [group, ns, pod, container] = key.split('/');
       wsSend({ type: 'subscribe', group, ns, pod, container });
     }
@@ -88,12 +90,33 @@ function wsSend(msg) {
 
 // ── Panel lifecycle ────────────────────────────────────────────────────────
 
-async function openPodPanel(group, ns, pod, container) {
+// panel:opened fires when a new tab is actually created in panels.js
+document.addEventListener('panel:opened', e => {
+  const { group, ns, pod, container } = e.detail;
   const key = panelKey(group, ns, pod, container);
-  openPanelKeys.add(key);
+  const count = openPanelKeyCounts.get(key) || 0;
+  openPanelKeyCounts.set(key, count + 1);
+  if (count === 0) {
+    wsSend({ type: 'subscribe', group, ns, pod, container });
+  }
+  renderSidebar();
+});
 
+document.addEventListener('panel:closed', e => {
+  const { group, ns, pod, container } = e.detail;
+  const key = panelKey(group, ns, pod, container);
+  const count = openPanelKeyCounts.get(key) || 0;
+  if (count <= 1) {
+    openPanelKeyCounts.delete(key);
+    wsSend({ type: 'unsubscribe', group, ns, pod, container });
+  } else {
+    openPanelKeyCounts.set(key, count - 1);
+  }
+  renderSidebar();
+});
+
+async function openPodPanel(group, ns, pod, container) {
   const id = openPanel(group, ns, pod, container, () => {});
-  wsSend({ type: 'subscribe', group, ns, pod, container });
 
   // Backfill from history
   try {
@@ -104,17 +127,8 @@ async function openPodPanel(group, ns, pod, container) {
     }
   } catch { /* ignore — live stream will work regardless */ }
 
-  renderSidebar();
   return id;
 }
-
-document.addEventListener('panel:closed', e => {
-  const { group, ns, pod, container } = e.detail;
-  const key = panelKey(group, ns, pod, container);
-  openPanelKeys.delete(key);
-  wsSend({ type: 'unsubscribe', group, ns, pod, container });
-  renderSidebar();
-});
 
 // ── Sidebar ────────────────────────────────────────────────────────────────
 
@@ -141,7 +155,7 @@ function renderSidebar() {
     for (const p of (g.pods || [])) {
       const key = panelKey(g.name, p.namespace, p.pod, p.container);
       const item = document.createElement('div');
-      item.className = 'pod-item' + (openPanelKeys.has(key) ? ' open' : '');
+      item.className = 'pod-item' + ((openPanelKeyCounts.get(key) || 0) > 0 ? ' open' : '');
 
       const dot = document.createElement('span');
       dot.className = 'pod-dot';
@@ -180,25 +194,26 @@ async function pollGroups() {
 
 async function restoreFromHash() {
   const saved = loadState();
-  if (!saved || !saved.panels.length) return;
+  if (!saved || !saved.panelGroups || !saved.panelGroups.length) return;
 
   restoringState = true;
   try {
     if (saved.focus) restoreFocusState(saved.focus);
 
-    // openPanel() inside openPodPanel() is synchronous, so the panel object
-    // exists before the first await — restoreFilters() can run immediately after.
-    const promises = saved.panels.map(ps => {
-      const p = openPodPanel(ps.group, ps.ns, ps.pod, ps.container);
-      if (ps.filters && ps.filters.length) {
-        restoreFilters(ps.group, ps.ns, ps.pod, ps.container, ps.filters);
+    const promises = [];
+    for (const savedPg of saved.panelGroups) {
+      addPanelGroup(); // creates and focuses a new empty group
+      for (const t of (savedPg.tabs || [])) {
+        const p = openPodPanel(t.group, t.ns, t.pod, t.container);
+        if (t.filters && t.filters.length) {
+          restoreFilters(t.group, t.ns, t.pod, t.container, t.filters);
+        }
+        promises.push(p);
       }
-      return p;
-    });
-
-    const activePs = saved.panels.find(ps => ps.active);
-    if (activePs) {
-      setActivePanelByKey(activePs.group, activePs.ns, activePs.pod, activePs.container);
+      if (savedPg.activeTab) {
+        const at = savedPg.activeTab;
+        setActivePanelByKey(at.group, at.ns, at.pod, at.container);
+      }
     }
 
     if (focusState.active) applyFocusToAll();
@@ -265,7 +280,6 @@ function togglePause() {
 function init() {
   initTheme();
 
-  // Add connection status dot to header
   const header = document.getElementById('header');
   const dot = document.createElement('span');
   dot.id = 'conn-status';
@@ -282,6 +296,10 @@ function init() {
   document.addEventListener('panels:state-changed', () => maybeSaveState());
 
   document.getElementById('btn-pause').addEventListener('click', togglePause);
+
+  document.getElementById('btn-add-panel').addEventListener('click', () => {
+    addPanelGroup();
+  });
 
   document.getElementById('btn-open-sidebar').addEventListener('click', () => {
     document.getElementById('sidebar').classList.remove('hidden');

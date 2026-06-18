@@ -39,10 +39,10 @@ klogster is a Go server that streams logs from multiple sources and serves them 
 
 **Frontend (`web/static/`):**
 - Vanilla JS ES modules, no build step
-- `app.js` — WebSocket lifecycle, pause/resume buffer, state serialization to URL hash
-- `panels.js` — tabbed log panel rendering, per-panel filters
+- `app.js` — WebSocket lifecycle, pause/resume buffer, sidebar, state serialization to URL hash
+- `panels.js` — VS Code-style panel groups and tabs; each panel group is a column holding multiple tabs; only the active tab's log is visible; tabs are draggable within and between columns; `addPanelGroup()` creates a new column
 - `focus.js` — cross-panel focus/highlight dialog (regexp patterns, context lines/time)
-- `state.js` — serialize/restore UI state from URL hash
+- `state.js` — serialize/restore UI state from URL hash (v2 format: `panelGroups[]` with per-group tab list; v1 backward compat)
 - `timeline.js` — timestamp alignment across panels
 
 ## Log format extension

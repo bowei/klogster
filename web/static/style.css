@@ -576,16 +576,9 @@ body {
 .help-badge-pos { color: #4ec9b0; font-weight: 700; }
 .help-badge-neg { color: #f44747; font-weight: 700; }
 
-#tab-bar {
-  display: flex;
-  align-items: stretch;
-  gap: 2px;
+#header-spacer {
   flex: 1;
-  overflow-x: auto;
-  scrollbar-width: none;
-  height: 100%;
 }
-#tab-bar::-webkit-scrollbar { display: none; }
 
 .tab {
   display: flex;
@@ -672,6 +665,46 @@ body {
   flex-shrink: 0;
 }
 #btn-open-sidebar:hover { background: var(--accent-hover); }
+
+#btn-add-panel {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+#btn-add-panel:hover { color: var(--text); border-color: var(--text-dim); }
+
+/* ── Panel groups ── */
+.panel-group {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 260px;
+  overflow: hidden;
+}
+
+.panel-group-tabs {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+  height: 32px;
+  gap: 1px;
+}
+.panel-group-tabs::-webkit-scrollbar { display: none; }
+.panel-group-tabs.drag-over { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Hide inactive tab content */
+.panel.tab-inactive { display: none; }
 
 /* ── Focus dialog ── */
 .focus-dialog {
@@ -937,6 +970,9 @@ mark.focus-match {
   background: var(--bg);
   overflow: hidden;
 }
+
+/* Inside a panel-group the active panel fills all remaining space */
+.panel-group > .panel { flex: 1; }
 
 .panel-toolbar {
   display: flex;

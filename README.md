@@ -140,25 +140,51 @@ For logging formats that are structured fields should be display like this:
 
 ## UI
 
-* Logs are shown as a set of configurable tabbed panels, like in an editor.
-* Tabs can be opened, closed, and dragged to reorder.
-* Timestamps are aligned across panels when scrolling.
-* The current view is saved in the URL hash — copy or bookmark the URL to
-  restore the exact set of open panels, active tab, per-panel filters, and
-  focus state on reload.
+The UI works like a multi-pane editor (VS Code style).
+
+**Panel columns** are the vertical split panes. Each column holds one or more
+tabs. Only the active tab's log is visible in its column; all other tabs
+continue streaming in the background and become visible when clicked.
+
+**Opening logs:**
+* Click **＋ Pod** to open the pod browser. Clicking a pod opens it as a new
+  tab in the currently focused column. If no columns are open, one is created
+  automatically.
+* Click **＋ Panel** to add a new empty column. The new column becomes the
+  focus target, so the next pod you click opens there.
+
+**Tabs:**
+* Click a tab to switch to it within its column.
+* Drag a tab to reorder it within its column, or drop it onto another
+  column's tab bar to move it there.
+* Close a tab with **✕**. When the last tab in a column is closed, the column
+  is removed.
+
+**State persistence:** the URL hash encodes the full layout — which pods are
+open, which column they're in, the active tab per column, per-tab filters, and
+focus state. Copy or bookmark the URL to restore the exact view on reload.
 
 ### Pause / Resume
 
-The **⏸** button (top-right, left of "+ Pod") pauses log updates to all panels.
+The **⏸** button (top-right) pauses log updates to all panels.
 While paused, the button turns amber and shows ▶ with a count of buffered lines.
 Clicking ▶ flushes the buffer and resumes live updates — no messages are dropped.
 
+### Per-panel filters
+
+Each tab has a **filter** button in its toolbar. Filters are per-tab
+include/exclude rules using regular expressions:
+* **+ show**: hide all lines that do *not* match this pattern.
+* **− hide**: hide all lines that *do* match this pattern.
+
+Multiple filters are ANDed together.
+
 ### Focus dialog
 
-The Focus button (left of the tab bar) filters all panels simultaneously.
-Lines matching any of the active focus patterns are shown and the matching
-text is highlighted. A useful example: add a trace UUID to see every panel
-that mentions it, with surrounding context for free.
+The **Focus** button filters all visible panels simultaneously.
+Lines matching any active focus pattern are shown and the matching text is
+highlighted. A useful example: add a trace UUID to see every panel that
+mentions it, with surrounding context.
 
 Focus options:
 
@@ -168,3 +194,9 @@ Focus options:
   * Line-based: number of surrounding lines to include.
   * Time-based: show lines within N seconds of each match.
   * Direction: before, around (default), or after each match.
+
+### Timeline crosshair
+
+Hover over a timestamp in any panel to see a crosshair drawn across all other
+panels at the equivalent point in time. Timestamps that fall outside the
+current viewport are shown as edge markers.

@@ -4,6 +4,23 @@ import { focusState, updateFocusCount, lineMatchesFocus, buildFocusHighlightRe }
 const MAX_LINES = 5000;
 const PRUNE_TO = 4000;
 
+// ── Data model ────────────────────────────────────────────────────────────────
+// panelGroups: array of { id, el, activeTabId, tabs: [tab, ...] }
+// tab: { id, group, ns, pod, container, el, logEl, wrapEl, crosshairEl,
+//         footerEl, filterBtn, lineCount, lastTs, filters, hasLevel,
+//         _scrollLocked, _cleanupScrollSync }
+
+const panelGroups = [];
+let nextPanelGroupId = 1;
+let nextTabId = 1;
+let focusedGroupId = null;
+
+function notifyStateChanged() {
+  document.dispatchEvent(new CustomEvent('panels:state-changed'));
+}
+
+// ── Utility ───────────────────────────────────────────────────────────────────
+
 function relativeTime(isoTs) {
   if (!isoTs) return '—';
   const secs = (Date.now() - new Date(isoTs).getTime()) / 1000;
@@ -13,19 +30,15 @@ function relativeTime(isoTs) {
   return `${Math.floor(secs / 3600)}h ago`;
 }
 
-function updateFooter(p) {
-  p.footerEl.textContent = `${p.lineCount.toLocaleString()} lines · last: ${relativeTime(p.lastTs)}`;
+function updateFooter(tab) {
+  tab.footerEl.textContent = `${tab.lineCount.toLocaleString()} lines · last: ${relativeTime(tab.lastTs)}`;
 }
 
-setInterval(() => { for (const p of panels) updateFooter(p); }, 1000);
-
-// panels: [{id, group, ns, pod, container, logEl, locked, filters, filterBtn}]
-const panels = [];
-let nextId = 1;
-
-function notifyStateChanged() {
-  document.dispatchEvent(new CustomEvent('panels:state-changed'));
-}
+setInterval(() => {
+  for (const pg of panelGroups) {
+    for (const tab of pg.tabs) updateFooter(tab);
+  }
+}, 1000);
 
 function lineVisible(filters, text) {
   for (const f of filters) {
@@ -68,31 +81,29 @@ function clearHighlight(entry) {
   if (!bodyEl) return;
   for (const child of bodyEl.children) {
     if (child.querySelector('.focus-match')) {
-      // textContent strips HTML tags, preserving original text
       child.textContent = child.textContent;
     }
   }
 }
 
-function applyFilters(p) {
-  for (const entry of p.logEl.querySelectorAll('.log-entry')) {
+function applyFilters(tab) {
+  for (const entry of tab.logEl.querySelectorAll('.log-entry')) {
     const bodyEl = entry.querySelector('.log-body');
     const text = bodyEl ? bodyEl.textContent : entry.textContent;
-    entry.style.display = lineVisible(p.filters, text) ? '' : 'none';
+    entry.style.display = lineVisible(tab.filters, text) ? '' : 'none';
   }
-  updateFilterBtn(p);
+  updateFilterBtn(tab);
 }
 
-function applyPanelFocus(p) {
-  const entries = [...p.logEl.querySelectorAll('.log-entry')];
+function applyPanelFocus(tab) {
+  const entries = [...tab.logEl.querySelectorAll('.log-entry')];
 
   if (!focusState.active) {
     for (const entry of entries) clearHighlight(entry);
-    applyFilters(p);
+    applyFilters(tab);
     return;
   }
 
-  // Pass 1: find matching indices
   const matchIdxs = [];
   entries.forEach((entry, i) => {
     const text = entry.querySelector('.log-body')?.textContent ?? entry.textContent;
@@ -100,7 +111,6 @@ function applyPanelFocus(p) {
   });
   const matchSet = new Set(matchIdxs);
 
-  // Pass 2: expand to context windows
   const visible = new Set();
   const { contextType, contextAmount, contextDirection } = focusState;
   for (const idx of matchIdxs) {
@@ -124,10 +134,9 @@ function applyPanelFocus(p) {
 
   const highlightRe = buildFocusHighlightRe();
 
-  // Apply: must be in context window AND pass per-panel filters; highlight direct matches
   entries.forEach((entry, i) => {
     const text = entry.querySelector('.log-body')?.textContent ?? entry.textContent;
-    const show = visible.has(i) && lineVisible(p.filters, text);
+    const show = visible.has(i) && lineVisible(tab.filters, text);
     entry.style.display = show ? '' : 'none';
     if (show && matchSet.has(i)) {
       applyHighlight(entry, highlightRe);
@@ -136,18 +145,20 @@ function applyPanelFocus(p) {
     }
   });
 
-  updateFilterBtn(p);
+  updateFilterBtn(tab);
 }
 
 function countFocusMatches() {
   let matchCount = 0;
   let totalCount = 0;
   if (focusState.active) {
-    for (const p of panels) {
-      for (const entry of p.logEl.querySelectorAll('.log-entry')) {
-        totalCount++;
-        const text = entry.querySelector('.log-body')?.textContent ?? entry.textContent;
-        if (lineMatchesFocus(text)) matchCount++;
+    for (const pg of panelGroups) {
+      for (const tab of pg.tabs) {
+        for (const entry of tab.logEl.querySelectorAll('.log-entry')) {
+          totalCount++;
+          const text = entry.querySelector('.log-body')?.textContent ?? entry.textContent;
+          if (lineMatchesFocus(text)) matchCount++;
+        }
       }
     }
     updateFocusCount(matchCount, totalCount);
@@ -155,25 +166,27 @@ function countFocusMatches() {
 }
 
 export function applyFocusToAll() {
-  for (const p of panels) applyPanelFocus(p);
+  for (const pg of panelGroups) {
+    for (const tab of pg.tabs) applyPanelFocus(tab);
+  }
   countFocusMatches();
 }
 
 document.addEventListener('focus:count-request', () => countFocusMatches());
 
-function updateFilterBtn(p) {
-  const n = p.filters.length;
-  p.filterBtn.textContent = n > 0 ? `filter (${n})` : 'filter';
-  p.filterBtn.classList.toggle('active', n > 0);
-  p.filterBtn.title = n > 0 ? `${n} filter(s) active — click to edit` : 'Add log filters';
+function updateFilterBtn(tab) {
+  const n = tab.filters.length;
+  tab.filterBtn.textContent = n > 0 ? `filter (${n})` : 'filter';
+  tab.filterBtn.classList.toggle('active', n > 0);
+  tab.filterBtn.title = n > 0 ? `${n} filter(s) active — click to edit` : 'Add log filters';
 }
 
 let activeFilterDialog = null;
 
-function openFilterDialog(p) {
-  const toolbar = p.el.querySelector('.panel-toolbar');
+function openFilterDialog(tab) {
+  const toolbar = tab.el.querySelector('.panel-toolbar');
 
-  if (activeFilterDialog && activeFilterDialog._panelId === p.id) {
+  if (activeFilterDialog && activeFilterDialog._tabId === tab.id) {
     activeFilterDialog.remove();
     activeFilterDialog = null;
     return;
@@ -185,7 +198,7 @@ function openFilterDialog(p) {
 
   const dialog = document.createElement('div');
   dialog.className = 'filter-dialog';
-  dialog._panelId = p.id;
+  dialog._tabId = tab.id;
   activeFilterDialog = dialog;
 
   const header = document.createElement('div');
@@ -197,14 +210,14 @@ function openFilterDialog(p) {
 
   function renderList() {
     listEl.innerHTML = '';
-    if (p.filters.length === 0) {
+    if (tab.filters.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'filter-empty';
       empty.textContent = 'No filters yet';
       listEl.appendChild(empty);
       return;
     }
-    p.filters.forEach((f, i) => {
+    tab.filters.forEach((f, i) => {
       const item = document.createElement('div');
       item.className = 'filter-item';
 
@@ -222,8 +235,8 @@ function openFilterDialog(p) {
       removeBtn.className = 'filter-remove';
       removeBtn.textContent = '×';
       removeBtn.addEventListener('click', () => {
-        p.filters.splice(i, 1);
-        applyFilters(p);
+        tab.filters.splice(i, 1);
+        applyFilters(tab);
         renderList();
         notifyStateChanged();
       });
@@ -262,8 +275,8 @@ function openFilterDialog(p) {
     if (!pattern) return;
     let re = null;
     try { re = new RegExp(pattern, 'i'); } catch (_) {}
-    p.filters.push({ type: typeSelect.value, pattern, re });
-    applyFilters(p);
+    tab.filters.push({ type: typeSelect.value, pattern, re });
+    applyFilters(tab);
     renderList();
     notifyStateChanged();
     patInput.value = '';
@@ -286,7 +299,7 @@ function openFilterDialog(p) {
   toolbar.appendChild(dialog);
 
   function onOutside(e) {
-    if (!dialog.contains(e.target) && e.target !== p.filterBtn) {
+    if (!dialog.contains(e.target) && e.target !== tab.filterBtn) {
       dialog.remove();
       activeFilterDialog = null;
       document.removeEventListener('mousedown', onOutside, true);
@@ -298,202 +311,9 @@ function openFilterDialog(p) {
   patInput.focus();
 }
 
-let dragSrcId = null;
-
-function getAllLogEls() {
-  return panels.map(p => p.logEl);
-}
-
-function renderTabBar() {
-  const bar = document.getElementById('tab-bar');
-  bar.innerHTML = '';
-  for (const p of panels) {
-    const tab = document.createElement('div');
-    tab.className = 'tab' + (p.active ? ' active' : '');
-    tab.dataset.panelId = p.id;
-    tab.draggable = true;
-
-    const title = document.createElement('span');
-    title.className = 'tab-title';
-    title.textContent = p.pod;
-    title.title = `${p.group} / ${p.ns} / ${p.pod} / ${p.container}`;
-
-    const close = document.createElement('button');
-    close.className = 'tab-close';
-    close.textContent = '✕';
-    close.title = 'Close panel';
-    close.addEventListener('click', e => {
-      e.stopPropagation();
-      removePanel(p.id);
-    });
-
-    tab.appendChild(title);
-    tab.appendChild(close);
-    tab.addEventListener('click', () => activatePanel(p.id));
-
-    tab.addEventListener('dragstart', e => {
-      dragSrcId = p.id;
-      e.dataTransfer.effectAllowed = 'move';
-    });
-    tab.addEventListener('dragover', e => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      tab.classList.add('drag-over');
-    });
-    tab.addEventListener('dragleave', () => tab.classList.remove('drag-over'));
-    tab.addEventListener('drop', e => {
-      e.preventDefault();
-      tab.classList.remove('drag-over');
-      if (dragSrcId == null || dragSrcId === p.id) return;
-      const srcIdx = panels.findIndex(x => x.id === dragSrcId);
-      const dstIdx = panels.findIndex(x => x.id === p.id);
-      if (srcIdx < 0 || dstIdx < 0) return;
-      const [moved] = panels.splice(srcIdx, 1);
-      panels.splice(dstIdx, 0, moved);
-      dragSrcId = null;
-      renderAll();
-      notifyStateChanged();
-    });
-    tab.addEventListener('dragend', () => { dragSrcId = null; });
-
-    bar.appendChild(tab);
-  }
-}
-
-function renderPanelContainer() {
-  const container = document.getElementById('panels-container');
-  // Sync DOM order with panels array
-  container.innerHTML = '';
-  for (const p of panels) {
-    container.appendChild(p.el);
-  }
-}
-
-function renderAll() {
-  renderTabBar();
-  renderPanelContainer();
-}
-
-function activatePanel(id) {
-  for (const p of panels) p.active = (p.id === id);
-  renderTabBar();
-  notifyStateChanged();
-}
-
-/**
- * Open a new panel for a pod/container. Returns the panel id.
- * onClose(id) is called when the panel is removed.
- */
-export function openPanel(group, ns, pod, container, onClose) {
-  const existing = panels.find(p => p.group === group && p.ns === ns && p.pod === pod && p.container === container);
-  if (existing) {
-    activatePanel(existing.id);
-    return existing.id;
-  }
-
-  const id = nextId++;
-
-  // Outer panel element
-  const el = document.createElement('div');
-  el.className = 'panel';
-  el.dataset.panelId = id;
-
-  // Toolbar
-  const toolbar = document.createElement('div');
-  toolbar.className = 'panel-toolbar';
-
-  const label = document.createElement('span');
-  label.className = 'panel-label';
-  label.textContent = `${group} / ${ns} / ${pod} / ${container}`;
-  label.title = label.textContent;
-
-  const lockBtn = document.createElement('button');
-  lockBtn.className = 'btn-lock-scroll';
-  lockBtn.textContent = '⟷ sync';
-  lockBtn.title = 'Toggle timestamp scroll sync';
-
-  const filterBtn = document.createElement('button');
-  filterBtn.className = 'btn-filter';
-  filterBtn.textContent = 'filter';
-  filterBtn.title = 'Add log filters';
-
-  toolbar.appendChild(label);
-  toolbar.appendChild(filterBtn);
-  toolbar.appendChild(lockBtn);
-
-  // Log area
-  const logEl = document.createElement('div');
-  logEl.className = 'panel-log';
-  logEl._scrollLocked = true;
-
-  lockBtn.addEventListener('click', () => {
-    logEl._scrollLocked = !logEl._scrollLocked;
-    lockBtn.classList.toggle('unlocked', !logEl._scrollLocked);
-    lockBtn.textContent = logEl._scrollLocked ? '⟷ sync' : '⟷ free';
-  });
-
-  const crosshairEl = document.createElement('div');
-  crosshairEl.className = 'ts-crosshair';
-
-  const wrapEl = document.createElement('div');
-  wrapEl.className = 'panel-log-wrap';
-  wrapEl.appendChild(logEl);
-  wrapEl.appendChild(crosshairEl);
-
-  // Footer
-  const footerEl = document.createElement('div');
-  footerEl.className = 'panel-footer';
-  footerEl.textContent = '0 lines · last: —';
-
-  el.appendChild(toolbar);
-  el.appendChild(wrapEl);
-  el.appendChild(footerEl);
-
-  const panel = { id, group, ns, pod, container, el, logEl, wrapEl, crosshairEl, footerEl, filterBtn, active: true, lineCount: 0, lastTs: null, filters: [], hasLevel: false };
-  for (const p of panels) p.active = false;
-  panels.push(panel);
-
-  filterBtn.addEventListener('click', () => openFilterDialog(panel));
-
-  panel._cleanupScrollSync = attachScrollSync(logEl, getAllLogEls, () => logEl._scrollLocked);
-
-  logEl.addEventListener('mouseover', e => {
-    const line = e.target.closest('.log-entry[data-ts]');
-    if (!line) return;
-    showCrosshairs(line.dataset.ts, panel, panels);
-  });
-  logEl.addEventListener('mouseleave', () => clearCrosshairs(panels));
-
-  renderAll();
-  notifyStateChanged();
-
-  return id;
-}
-
-export function closePanel(id) {
-  removePanel(id);
-}
-
-function removePanel(id) {
-  const idx = panels.findIndex(p => p.id === id);
-  if (idx < 0) return;
-  const [p] = panels.splice(idx, 1);
-  if (p._cleanupScrollSync) p._cleanupScrollSync();
-  p.el.remove();
-
-  if (panels.length > 0 && !panels.some(x => x.active)) {
-    panels[Math.min(idx, panels.length - 1)].active = true;
-  }
-  renderTabBar();
-  notifyStateChanged();
-
-  // Notify app to unsubscribe
-  document.dispatchEvent(new CustomEvent('panel:closed', { detail: { id, group: p.group, ns: p.ns, pod: p.pod, container: p.container } }));
-}
+// ── Log entry building ────────────────────────────────────────────────────────
 
 function formatTs(ts) {
-  // ts is RFC3339Nano e.g. "2024-01-16T10:00:00.123456789Z"
-  // Returns "2024-01-16 10:00:00.123456789" (no T, no timezone suffix)
   const date = ts.slice(0, 10);
   const time = ts.slice(11).replace(/Z$|[+-].*$/, '');
   return date + ' ' + time;
@@ -541,24 +361,372 @@ function buildLogEntry(ts, message, fields, level) {
   return entry;
 }
 
-/**
- * Append a log line to the panel identified by (group, ns, pod, container).
- */
-export function appendLine(group, ns, pod, container, ts, message, fields, level) {
-  const p = panels.find(x => x.group === group && x.ns === ns && x.pod === pod && x.container === container);
-  if (!p) return;
+function pruneLines(logEl) {
+  const entries = logEl.querySelectorAll('.log-entry');
+  const toRemove = entries.length - PRUNE_TO;
+  for (let i = 0; i < toRemove; i++) {
+    entries[i].remove();
+  }
+}
 
-  const { logEl } = p;
-  const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
+// ── Panel group helpers ───────────────────────────────────────────────────────
+
+function getFocusedGroup() {
+  return panelGroups.find(pg => pg.id === focusedGroupId) || panelGroups[panelGroups.length - 1] || null;
+}
+
+function getTabByKey(group, ns, pod, container) {
+  for (const pg of panelGroups) {
+    const tab = pg.tabs.find(t => t.group === group && t.ns === ns && t.pod === pod && t.container === container);
+    if (tab) return { pg, tab };
+  }
+  return null;
+}
+
+function getActivePanels() {
+  return panelGroups
+    .map(pg => pg.tabs.find(t => t.id === pg.activeTabId))
+    .filter(Boolean);
+}
+
+function getActiveTabLogEls() {
+  return getActivePanels().map(t => t.logEl);
+}
+
+function focusGroup(groupId) {
+  focusedGroupId = groupId;
+}
+
+// ── Tab bar rendering ─────────────────────────────────────────────────────────
+
+let dragSrc = null; // { srcGroupId, tabId }
+
+function renderGroupTabBar(pg) {
+  const tabBar = pg.el.querySelector('.panel-group-tabs');
+  tabBar.innerHTML = '';
+
+  for (const tab of pg.tabs) {
+    const tabEl = document.createElement('div');
+    tabEl.className = 'tab' + (tab.id === pg.activeTabId ? ' active' : '');
+    tabEl.dataset.tabId = tab.id;
+    tabEl.draggable = true;
+
+    const title = document.createElement('span');
+    title.className = 'tab-title';
+    title.textContent = tab.pod;
+    title.title = `${tab.group} / ${tab.ns} / ${tab.pod} / ${tab.container}`;
+
+    const close = document.createElement('button');
+    close.className = 'tab-close';
+    close.textContent = '✕';
+    close.title = 'Close tab';
+    close.addEventListener('click', e => {
+      e.stopPropagation();
+      removeTab(pg.id, tab.id);
+    });
+
+    tabEl.appendChild(title);
+    tabEl.appendChild(close);
+    tabEl.addEventListener('click', () => activateTab(pg.id, tab.id));
+
+    tabEl.addEventListener('dragstart', e => {
+      dragSrc = { srcGroupId: pg.id, tabId: tab.id };
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', JSON.stringify(dragSrc));
+    });
+    tabEl.addEventListener('dragover', e => {
+      if (!dragSrc) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      tabEl.classList.add('drag-over');
+    });
+    tabEl.addEventListener('dragleave', () => tabEl.classList.remove('drag-over'));
+    tabEl.addEventListener('drop', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      tabEl.classList.remove('drag-over');
+      if (!dragSrc) return;
+      const { srcGroupId, tabId: srcTabId } = dragSrc;
+      if (srcGroupId === pg.id && srcTabId === tab.id) { dragSrc = null; return; }
+      moveTab(srcGroupId, srcTabId, pg.id, tab.id);
+      dragSrc = null;
+    });
+    tabEl.addEventListener('dragend', () => { dragSrc = null; });
+
+    tabBar.appendChild(tabEl);
+  }
+}
+
+// ── Panel group management ────────────────────────────────────────────────────
+
+export function addPanelGroup() {
+  const pgId = nextPanelGroupId++;
+  const el = document.createElement('div');
+  el.className = 'panel-group';
+  el.dataset.groupId = pgId;
+
+  const tabBar = document.createElement('div');
+  tabBar.className = 'panel-group-tabs';
+
+  // Drop zone on empty tab bar space (append to this group)
+  tabBar.addEventListener('dragover', e => {
+    if (!dragSrc) return;
+    if (e.target.closest('.tab')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    tabBar.classList.add('drag-over');
+  });
+  tabBar.addEventListener('dragleave', e => {
+    if (!tabBar.contains(e.relatedTarget)) tabBar.classList.remove('drag-over');
+  });
+  tabBar.addEventListener('drop', e => {
+    tabBar.classList.remove('drag-over');
+    if (!dragSrc) return;
+    if (e.target.closest('.tab')) return; // handled by tab's drop listener
+    e.preventDefault();
+    const { srcGroupId, tabId: srcTabId } = dragSrc;
+    const pg = panelGroups.find(g => g.id === pgId);
+    if (!pg) { dragSrc = null; return; }
+    moveTab(srcGroupId, srcTabId, pgId, null);
+    dragSrc = null;
+  });
+
+  el.appendChild(tabBar);
+
+  // Clicking anywhere in this panel group focuses it
+  el.addEventListener('mousedown', () => focusGroup(pgId));
+
+  const pg = { id: pgId, el, activeTabId: null, tabs: [] };
+  panelGroups.push(pg);
+  document.getElementById('panels-container').appendChild(el);
+  focusGroup(pgId);
+  return pg;
+}
+
+function removePanelGroup(pgId) {
+  const idx = panelGroups.findIndex(g => g.id === pgId);
+  if (idx < 0) return;
+  const [pg] = panelGroups.splice(idx, 1);
+  pg.el.remove();
+
+  if (panelGroups.length > 0) {
+    focusGroup(panelGroups[Math.min(idx, panelGroups.length - 1)].id);
+  } else {
+    focusedGroupId = null;
+  }
+}
+
+// ── Tab management ────────────────────────────────────────────────────────────
+
+function activateTab(groupId, tabId) {
+  const pg = panelGroups.find(g => g.id === groupId);
+  if (!pg) return;
+  pg.activeTabId = tabId;
+
+  for (const tab of pg.tabs) {
+    tab.el.classList.toggle('tab-inactive', tab.id !== tabId);
+  }
+
+  renderGroupTabBar(pg);
+  focusGroup(groupId);
+  notifyStateChanged();
+}
+
+function removeTab(groupId, tabId) {
+  const pg = panelGroups.find(g => g.id === groupId);
+  if (!pg) return;
+
+  const idx = pg.tabs.findIndex(t => t.id === tabId);
+  if (idx < 0) return;
+
+  const [tab] = pg.tabs.splice(idx, 1);
+  if (tab._cleanupScrollSync) tab._cleanupScrollSync();
+  tab.el.remove();
+
+  document.dispatchEvent(new CustomEvent('panel:closed', {
+    detail: { id: tab.id, group: tab.group, ns: tab.ns, pod: tab.pod, container: tab.container }
+  }));
+
+  if (pg.tabs.length === 0) {
+    removePanelGroup(pg.id);
+  } else {
+    if (pg.activeTabId === tabId) {
+      const next = pg.tabs[Math.min(idx, pg.tabs.length - 1)];
+      pg.activeTabId = next.id;
+      for (const t of pg.tabs) t.el.classList.toggle('tab-inactive', t.id !== pg.activeTabId);
+    }
+    renderGroupTabBar(pg);
+  }
+  notifyStateChanged();
+}
+
+function moveTab(srcGroupId, tabId, dstGroupId, beforeTabId) {
+  const srcPg = panelGroups.find(g => g.id === srcGroupId);
+  const dstPg = panelGroups.find(g => g.id === dstGroupId);
+  if (!srcPg || !dstPg) return;
+
+  const srcIdx = srcPg.tabs.findIndex(t => t.id === tabId);
+  if (srcIdx < 0) return;
+
+  const [tab] = srcPg.tabs.splice(srcIdx, 1);
+
+  // Fix source group after removal
+  const srcWasActive = srcPg.activeTabId === tabId;
+  if (srcPg.tabs.length === 0) {
+    removePanelGroup(srcPg.id);
+  } else {
+    if (srcWasActive) {
+      const next = srcPg.tabs[Math.min(srcIdx, srcPg.tabs.length - 1)];
+      srcPg.activeTabId = next.id;
+      for (const t of srcPg.tabs) t.el.classList.toggle('tab-inactive', t.id !== srcPg.activeTabId);
+    }
+    renderGroupTabBar(srcPg);
+  }
+
+  // Insert into destination group
+  if (beforeTabId == null) {
+    dstPg.tabs.push(tab);
+  } else {
+    const dstIdx = dstPg.tabs.findIndex(t => t.id === beforeTabId);
+    dstPg.tabs.splice(dstIdx >= 0 ? dstIdx : dstPg.tabs.length, 0, tab);
+  }
+
+  // Move panel DOM element into new group
+  tab.el.remove();
+  dstPg.el.appendChild(tab.el);
+
+  activateTab(dstGroupId, tabId);
+  notifyStateChanged();
+}
+
+// ── Open / close panel ────────────────────────────────────────────────────────
+
+export function openPanel(group, ns, pod, container, _onClose) {
+  const focusedPg = getFocusedGroup();
+
+  // If already open in focused group, just activate it
+  if (focusedPg) {
+    const existing = focusedPg.tabs.find(t =>
+      t.group === group && t.ns === ns && t.pod === pod && t.container === container);
+    if (existing) {
+      activateTab(focusedPg.id, existing.id);
+      return existing.id;
+    }
+  }
+
+  const pg = focusedPg || addPanelGroup();
+  const tabId = nextTabId++;
+
+  // Build panel DOM
+  const el = document.createElement('div');
+  el.className = 'panel';
+  el.dataset.tabId = tabId;
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'panel-toolbar';
+
+  const label = document.createElement('span');
+  label.className = 'panel-label';
+  label.textContent = `${group} / ${ns} / ${pod} / ${container}`;
+  label.title = label.textContent;
+
+  const lockBtn = document.createElement('button');
+  lockBtn.className = 'btn-lock-scroll';
+  lockBtn.textContent = '⟷ sync';
+  lockBtn.title = 'Toggle timestamp scroll sync';
+
+  const filterBtn = document.createElement('button');
+  filterBtn.className = 'btn-filter';
+  filterBtn.textContent = 'filter';
+  filterBtn.title = 'Add log filters';
+
+  toolbar.appendChild(label);
+  toolbar.appendChild(filterBtn);
+  toolbar.appendChild(lockBtn);
+
+  const logEl = document.createElement('div');
+  logEl.className = 'panel-log';
+  logEl._scrollLocked = true;
+
+  lockBtn.addEventListener('click', () => {
+    logEl._scrollLocked = !logEl._scrollLocked;
+    lockBtn.classList.toggle('unlocked', !logEl._scrollLocked);
+    lockBtn.textContent = logEl._scrollLocked ? '⟷ sync' : '⟷ free';
+  });
+
+  const crosshairEl = document.createElement('div');
+  crosshairEl.className = 'ts-crosshair';
+
+  const wrapEl = document.createElement('div');
+  wrapEl.className = 'panel-log-wrap';
+  wrapEl.appendChild(logEl);
+  wrapEl.appendChild(crosshairEl);
+
+  const footerEl = document.createElement('div');
+  footerEl.className = 'panel-footer';
+  footerEl.textContent = '0 lines · last: —';
+
+  el.appendChild(toolbar);
+  el.appendChild(wrapEl);
+  el.appendChild(footerEl);
+
+  const tab = {
+    id: tabId, group, ns, pod, container,
+    el, logEl, wrapEl, crosshairEl, footerEl, filterBtn,
+    lineCount: 0, lastTs: null, filters: [], hasLevel: false,
+  };
+
+  pg.tabs.push(tab);
+  pg.el.appendChild(tab.el);
+
+  filterBtn.addEventListener('click', () => openFilterDialog(tab));
+
+  tab._cleanupScrollSync = attachScrollSync(logEl, getActiveTabLogEls, () => logEl._scrollLocked);
+
+  logEl.addEventListener('mouseover', e => {
+    const line = e.target.closest('.log-entry[data-ts]');
+    if (!line) return;
+    showCrosshairs(line.dataset.ts, tab, getActivePanels());
+  });
+  logEl.addEventListener('mouseleave', () => clearCrosshairs(getActivePanels()));
+
+  document.dispatchEvent(new CustomEvent('panel:opened', {
+    detail: { id: tabId, group, ns, pod, container }
+  }));
+
+  activateTab(pg.id, tabId);
+  return tabId;
+}
+
+export function closePanel(id) {
+  for (const pg of panelGroups) {
+    const tab = pg.tabs.find(t => t.id === id);
+    if (tab) { removeTab(pg.id, id); return; }
+  }
+}
+
+// ── Log line ingestion ────────────────────────────────────────────────────────
+
+export function appendLine(group, ns, pod, container, ts, message, fields, level) {
+  const result = getTabByKey(group, ns, pod, container);
+  if (!result) return;
+  const { tab } = result;
+  const { logEl } = tab;
+
+  const pg = panelGroups.find(g => g.id === result.pg.id);
+  const isActive = pg && pg.activeTabId === tab.id;
+  const atBottom = isActive
+    ? logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40
+    : true; // always track bottom for hidden tabs
 
   const entry = buildLogEntry(ts, message, fields, level || '');
-  if (!p.hasLevel && level && level !== 'OTHER') {
-    p.hasLevel = true;
-    p.el.classList.add('has-level');
+  if (!tab.hasLevel && level && level !== 'OTHER') {
+    tab.hasLevel = true;
+    tab.el.classList.add('has-level');
   }
   const bodyEl = entry.querySelector('.log-body');
   const text = bodyEl ? bodyEl.textContent : message || '';
-  const panelVisible = lineVisible(p.filters, text);
+  const panelVisible = lineVisible(tab.filters, text);
   const matches = focusState.active && lineMatchesFocus(text);
   const focusVisible = !focusState.active || matches;
   if (!panelVisible || !focusVisible) {
@@ -568,37 +736,26 @@ export function appendLine(group, ns, pod, container, ts, message, fields, level
   }
 
   logEl.appendChild(entry);
-  p.lineCount++;
-  if (ts) p.lastTs = ts;
-  updateFooter(p);
+  tab.lineCount++;
+  if (ts) tab.lastTs = ts;
+  updateFooter(tab);
 
-  if (p.lineCount > MAX_LINES) {
+  if (tab.lineCount > MAX_LINES) {
     pruneLines(logEl);
-    p.lineCount = PRUNE_TO;
+    tab.lineCount = PRUNE_TO;
   }
 
-  if (atBottom) {
+  if (isActive && atBottom) {
     logEl.scrollTop = logEl.scrollHeight;
   }
 }
 
-function pruneLines(logEl) {
-  const entries = logEl.querySelectorAll('.log-entry');
-  const toRemove = entries.length - PRUNE_TO;
-  for (let i = 0; i < toRemove; i++) {
-    entries[i].remove();
-  }
-}
-
-/**
- * Prepend backfill lines (history) to a panel. Lines are oldest-first.
- * Each line is {ts, message, fields} as returned by /api/logs.
- */
 export function prependLines(group, ns, pod, container, lines) {
-  const p = panels.find(x => x.group === group && x.ns === ns && x.pod === pod && x.container === container);
-  if (!p || !lines.length) return;
+  const result = getTabByKey(group, ns, pod, container);
+  if (!result || !lines.length) return;
+  const { tab } = result;
+  const { logEl } = tab;
 
-  const { logEl } = p;
   const frag = document.createDocumentFragment();
 
   for (const line of lines) {
@@ -606,52 +763,63 @@ export function prependLines(group, ns, pod, container, lines) {
     frag.appendChild(entry);
   }
 
-  if (!p.hasLevel && lines.some(l => l.level && l.level !== 'OTHER')) {
-    p.hasLevel = true;
-    p.el.classList.add('has-level');
+  if (!tab.hasLevel && lines.some(l => l.level && l.level !== 'OTHER')) {
+    tab.hasLevel = true;
+    tab.el.classList.add('has-level');
   }
 
   logEl.insertBefore(frag, logEl.firstChild);
-  p.lineCount += lines.length;
-  if (p.lineCount > MAX_LINES) {
+  tab.lineCount += lines.length;
+  if (tab.lineCount > MAX_LINES) {
     pruneLines(logEl);
-    p.lineCount = PRUNE_TO;
+    tab.lineCount = PRUNE_TO;
   }
 
-  if (!p.lastTs) {
+  if (!tab.lastTs) {
     for (let i = lines.length - 1; i >= 0; i--) {
-      if (lines[i].ts) { p.lastTs = lines[i].ts; break; }
+      if (lines[i].ts) { tab.lastTs = lines[i].ts; break; }
     }
   }
-  updateFooter(p);
-  // Apply focus + per-panel filters after full backfill is inserted
-  applyPanelFocus(p);
+  updateFooter(tab);
+  applyPanelFocus(tab);
 }
 
+// ── State serialization ───────────────────────────────────────────────────────
+
 export function getPanelIds() {
-  return panels.map(p => ({ id: p.id, group: p.group, ns: p.ns, pod: p.pod, container: p.container }));
+  return panelGroups.flatMap(pg =>
+    pg.tabs.map(t => ({ id: t.id, group: t.group, ns: t.ns, pod: t.pod, container: t.container }))
+  );
 }
 
 export function getSerializableState() {
-  return panels.map(p => ({
-    group: p.group, ns: p.ns, pod: p.pod, container: p.container,
-    active: p.active,
-    filters: p.filters.map(f => ({ type: f.type, pattern: f.pattern })),
-  }));
+  return panelGroups.map(pg => {
+    const activeTab = pg.tabs.find(t => t.id === pg.activeTabId);
+    return {
+      activeTab: activeTab
+        ? { group: activeTab.group, ns: activeTab.ns, pod: activeTab.pod, container: activeTab.container }
+        : null,
+      tabs: pg.tabs.map(t => ({
+        group: t.group, ns: t.ns, pod: t.pod, container: t.container,
+        filters: t.filters.map(f => ({ type: f.type, pattern: f.pattern })),
+      })),
+    };
+  });
 }
 
 export function restoreFilters(group, ns, pod, container, filters) {
-  const p = panels.find(x => x.group === group && x.ns === ns && x.pod === pod && x.container === container);
-  if (!p) return;
-  p.filters = filters.map(f => {
+  const result = getTabByKey(group, ns, pod, container);
+  if (!result) return;
+  const { tab } = result;
+  tab.filters = filters.map(f => {
     let re = null;
     try { re = new RegExp(f.pattern, 'i'); } catch {}
     return { type: f.type, pattern: f.pattern, re };
   });
-  applyFilters(p);
+  applyFilters(tab);
 }
 
 export function setActivePanelByKey(group, ns, pod, container) {
-  const p = panels.find(x => x.group === group && x.ns === ns && x.pod === pod && x.container === container);
-  if (p) activatePanel(p.id);
+  const result = getTabByKey(group, ns, pod, container);
+  if (result) activateTab(result.pg.id, result.tab.id);
 }

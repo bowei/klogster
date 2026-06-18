@@ -13,8 +13,9 @@
       <button id="btn-config" title="Settings">⚙</button>
       <button id="btn-help" title="Help">?</button>
       <button id="btn-focus" title="Focus all panels on a regexp pattern">Focus</button>
-      <div id="tab-bar"></div>
+      <div id="header-spacer"></div>
       <button id="btn-pause" title="Pause log updates">⏸</button>
+      <button id="btn-add-panel" title="Add a new panel column">＋ Panel</button>
       <button id="btn-open-sidebar" title="Browse pods">＋ Pod</button>
     </header>
     <div id="sidebar" class="hidden">
@@ -93,12 +94,13 @@
     </div>
     <div class="help-body">
       <section>
-        <h3>Panels</h3>
+        <h3>Panels &amp; Tabs</h3>
         <dl>
-          <dt>＋ Pod</dt><dd>Open the pod browser to add a new log panel.</dd>
-          <dt>Panel close (✕)</dt><dd>Close an individual log panel.</dd>
-          <dt>Drag tabs</dt><dd>Reorder panels by dragging their header tabs.</dd>
-          <dt>Lock / Unlock scroll</dt><dd>Toggle live-tail for a panel. When unlocked, new lines scroll into view automatically.</dd>
+          <dt>＋ Pod</dt><dd>Open the pod browser. Clicking a pod opens it as a new tab in the currently focused panel column.</dd>
+          <dt>＋ Panel</dt><dd>Add a new empty panel column. The new column becomes the target for the next pod you open.</dd>
+          <dt>Tab close (✕)</dt><dd>Close a tab. When the last tab in a column is closed, the column is removed.</dd>
+          <dt>Drag tabs</dt><dd>Reorder tabs within a column, or drag a tab to a different column to move it there.</dd>
+          <dt>Lock / Unlock scroll</dt><dd>Toggle live-tail for a tab. When unlocked, new lines scroll into view automatically.</dd>
           <dt>⏸ / ▶ Pause / Resume</dt><dd>Pause log updates to all panels. Incoming lines are buffered and flushed when you resume — no messages are dropped.</dd>
         </dl>
       </section>

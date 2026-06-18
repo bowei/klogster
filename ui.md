@@ -11,6 +11,9 @@ Pauses all live log updates across every panel. New lines arriving during the pa
 ### Focus button
 Opens the focus dialog (see [Focus](#focus)). The button turns accent-colored when any focus pattern is active.
 
+### + Panel button
+Creates a new empty panel column and makes it the active target for the next pod opened from the browser. See [Panel columns](#panel-columns).
+
 ### + Pod button
 Toggles the pod browser sidebar (see [Pod Browser](#pod-browser)).
 
@@ -26,24 +29,32 @@ Opens a keyboard shortcut and feature reference dialog. Pressing Escape closes i
 
 A slide-in sidebar on the right listing every discovered pod organized by log group. Polls `/api/groups` every 10 seconds to stay current.
 
-- Clicking a pod item opens a new panel for that pod/container and subscribes to its live stream.
-- Pod items already open are highlighted in the accent color.
-- On open, 500 lines of recent history are back-filled so the panel is not empty.
+- Clicking a pod item opens it as a new tab in the currently focused panel column. If no columns exist, one is created automatically.
+- Pod items already open in any column are highlighted in the accent color.
+- On open, 500 lines of recent history are back-filled so the tab is not empty.
 - The ✕ button at the top of the sidebar closes it.
 
 ---
 
 ## Panels
 
-### Tabs
-Each open pod gets a tab. The active tab has a colored top border. Tabs show the truncated pod path; hovering shows the full `group / namespace / pod / container` path in a tooltip.
+### Panel columns
+The main area is divided into one or more vertical columns. Each column holds one or more tabs. Only the active tab's log content is visible; all other tabs continue streaming in the background and become visible when clicked.
 
-- **Clicking a tab** switches to that panel.
-- **Dragging a tab** over another reorders them.
-- **✕ on a tab** closes the panel and unsubscribes from the log stream.
+Clicking anywhere inside a column makes it the focused column — the target for the next pod opened from the browser. The **+ Panel** button adds a new empty column on the right and focuses it.
+
+A column is removed automatically when its last tab is closed.
+
+### Tabs
+Each open pod/container gets a tab at the top of its column. The active tab has a colored top border. Tabs show the truncated pod name; hovering shows the full `group / namespace / pod / container` path in a tooltip.
+
+- **Clicking a tab** switches the column to show that tab's log.
+- **Dragging a tab** over another tab reorders them within the column.
+- **Dragging a tab** onto a different column's tab bar moves it to that column.
+- **✕ on a tab** closes the tab and unsubscribes from its log stream. If it was the last tab in the column, the column is removed.
 
 ### Panel label
-The toolbar at the top of each panel shows the full `group / namespace / pod / container` path.
+The toolbar at the top of each tab's content shows the full `group / namespace / pod / container` path.
 
 ### Log lines
 Each line shows:
@@ -142,9 +153,9 @@ The selected theme is persisted in `localStorage` and applied immediately via a 
 
 ## State Persistence
 
-The full UI state is encoded as base64 JSON in the URL hash and updated whenever panels are opened, closed, reordered, or filtered. Reloading the page or sharing the URL restores:
+The full UI state is encoded as base64 JSON in the URL hash and updated whenever tabs are opened, closed, moved, or filtered. Reloading the page or sharing the URL restores:
 
-- Which panels are open (pod identity, group, namespace, container)
-- Per-panel filters
+- Which panel columns exist and which tabs are in each column
+- The active tab per column
+- Per-tab filters
 - Focus patterns and context settings
-- The active tab
