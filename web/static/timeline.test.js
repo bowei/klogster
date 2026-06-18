@@ -2,11 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { findClosestSpan } from './timeline.js';
 
-// findClosestSpan only needs querySelectorAll() and span.dataset.ts —
-// no full DOM required.
+// findClosestSpan only needs logEl.children and span.dataset.ts —
+// no full DOM required. Arrays satisfy the indexed-access + .length interface.
 function makeLogEl(timestamps) {
   const spans = timestamps.map(ts => ({ dataset: { ts } }));
-  return { querySelectorAll: () => spans };
+  return { children: spans };
 }
 
 test('findClosestSpan returns null for empty log', () => {

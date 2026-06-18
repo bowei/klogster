@@ -25,30 +25,33 @@ function topVisibleTimestamp(logEl) {
 }
 
 /**
- * Find the span in logEl whose data-ts is closest to targetTs (ISO string).
- * Uses binary search on the ordered list of spans.
+ * Find the entry in logEl whose data-ts is closest to targetTs (ISO string).
+ * Returns the first entry with ts >= targetTs, or the last entry if all are
+ * earlier. Falls back to the last child when the search overshoots.
+ *
+ * Uses logEl.children (a browser-maintained HTMLCollection) instead of
+ * querySelectorAll to avoid allocating a NodeList on every call. Entries
+ * without data-ts are treated as '' and compare before all real timestamps.
+ *
+ * Note: the original "closest" comparison (targetTs - before) produced NaN
+ * for ISO strings, so it always returned the >= side. This version makes
+ * that behaviour explicit and fixes the undefined-return bug when lo was
+ * past the end of the list.
  */
 export function findClosestSpan(logEl, targetTs) {
-  const spans = logEl.querySelectorAll('.log-entry[data-ts]');
-  if (!spans.length) return null;
+  const children = logEl.children;
+  const n = children.length;
+  if (!n) return null;
 
-  let lo = 0, hi = spans.length - 1;
+  let lo = 0, hi = n;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    if (spans[mid].dataset.ts < targetTs) {
-      lo = mid + 1;
-    } else {
-      hi = mid;
-    }
+    if ((children[mid].dataset.ts || '') < targetTs) lo = mid + 1;
+    else hi = mid;
   }
 
-  // lo is the first span with ts >= targetTs; check lo-1 for closest
-  if (lo > 0 && lo < spans.length) {
-    const before = spans[lo - 1].dataset.ts;
-    const after = spans[lo].dataset.ts;
-    return (targetTs - before < after - targetTs) ? spans[lo - 1] : spans[lo];
-  }
-  return spans[lo];
+  // lo is the first entry with ts >= targetTs; fall back to last if past end.
+  return children[lo] ?? children[n - 1];
 }
 
 /**
