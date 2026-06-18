@@ -883,48 +883,72 @@ export function closePanel(id) {
 
 // ── Log line ingestion ────────────────────────────────────────────────────────
 
-export function appendLine(group, ns, pod, container, ts, message, fields, level) {
-  const result = getTabByKey(group, ns, pod, container);
-  if (!result) return;
-  const { tab, pg } = result;
-  const { logEl } = tab;
+// Accepts a batch of {group, ns, pod, container, ts, message, fields, level}
+// objects. Groups by tab so each tab gets one DocumentFragment append, one
+// scroll-position read, one footer update, and one prune check per call.
+export function appendLines(messages) {
+  const highlightRe = focusState.active ? buildFocusHighlightRe() : null;
 
-  const isActive = pg.activeTabId === tab.id && !pg.merged;
-  const atBottom = isActive
-    ? logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40
-    : true; // always track bottom for hidden tabs
+  // Build per-tab batches in a single pass over the message list.
+  const tabBatches = new Map();
+  for (const msg of messages) {
+    const result = getTabByKey(msg.group, msg.ns, msg.pod, msg.container);
+    if (!result) continue;
+    const { tab, pg } = result;
+    if (!tabBatches.has(tab.id)) tabBatches.set(tab.id, { tab, pg, entries: [] });
 
-  const entry = buildLogEntry(ts, message, fields, level || '');
-  if (!tab.hasLevel && level && level !== 'OTHER') {
-    tab.hasLevel = true;
-    tab.el.classList.add('has-level');
-  }
-  const bodyEl = entry.querySelector('.log-body');
-  const text = bodyEl ? bodyEl.textContent : message || '';
-  const panelVisible = lineVisible(tab.filters, text);
-  const matches = focusState.active && lineMatchesFocus(text);
-  const focusVisible = !focusState.active || matches;
-  if (!panelVisible || !focusVisible) {
-    entry.style.display = 'none';
-  } else if (matches) {
-    applyHighlight(entry, buildFocusHighlightRe());
-  }
+    const ts = msg.ts || '';
+    const level = msg.level || '';
+    const entry = buildLogEntry(ts, msg.message || '', msg.fields || null, level);
 
-  logEl.appendChild(entry);
-  tab.lineCount++;
-  if (ts) tab.lastTs = ts;
-  updateFooter(tab);
+    if (!tab.hasLevel && level && level !== 'OTHER') {
+      tab.hasLevel = true;
+      tab.el.classList.add('has-level');
+    }
 
-  if (tab.lineCount > MAX_LINES) {
-    pruneLines(logEl);
-    tab.lineCount = PRUNE_TO;
-  }
+    const bodyEl = entry.querySelector('.log-body');
+    const text = bodyEl ? bodyEl.textContent : msg.message || '';
+    const panelVisible = lineVisible(tab.filters, text);
+    const matches = focusState.active && lineMatchesFocus(text);
+    const focusVisible = !focusState.active || matches;
+    if (!panelVisible || !focusVisible) {
+      entry.style.display = 'none';
+    } else if (matches) {
+      applyHighlight(entry, highlightRe);
+    }
 
-  if (isActive && atBottom) {
-    logEl.scrollTop = logEl.scrollHeight;
+    tabBatches.get(tab.id).entries.push({ entry, ts });
   }
 
-  if (pg.merged) appendToMergedView(pg, tab, ts, entry);
+  for (const { tab, pg, entries } of tabBatches.values()) {
+    const { logEl } = tab;
+    const isActive = pg.activeTabId === tab.id && !pg.merged;
+    // Read scroll position once before appending to avoid per-line reflows.
+    const atBottom = isActive
+      ? logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40
+      : true;
+
+    const frag = document.createDocumentFragment();
+    for (const { entry, ts } of entries) {
+      frag.appendChild(entry);
+      tab.lineCount++;
+      if (ts) tab.lastTs = ts;
+    }
+    logEl.appendChild(frag); // single DOM mutation for the whole batch
+
+    updateFooter(tab);
+
+    if (tab.lineCount > MAX_LINES) {
+      pruneLines(logEl);
+      tab.lineCount = PRUNE_TO;
+    }
+
+    if (isActive && atBottom) logEl.scrollTop = logEl.scrollHeight;
+
+    if (pg.merged) {
+      for (const { entry, ts } of entries) appendToMergedView(pg, tab, ts, entry);
+    }
+  }
 }
 
 export function prependLines(group, ns, pod, container, lines) {

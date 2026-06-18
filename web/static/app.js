@@ -1,4 +1,4 @@
-import { openPanel, closePanel, addPanelGroup, appendLine, prependLines, getPanelIds, applyFocusToAll, getSerializableState, restoreFilters, setActivePanelByKey, toggleMergedView } from './panels.js';
+import { openPanel, closePanel, addPanelGroup, appendLines, prependLines, getPanelIds, applyFocusToAll, getSerializableState, restoreFilters, setActivePanelByKey, toggleMergedView } from './panels.js';
 import { openFocusDialog, focusState, restoreFocusState } from './focus.js';
 import { saveState, loadState } from './state.js';
 
@@ -16,6 +16,17 @@ let restoringState = false;
 
 let paused = false;
 let pauseBuffer = [];
+
+let liveBuffer = [];
+let liveRafId = null;
+
+function flushLiveBuffer() {
+  liveRafId = null;
+  if (!liveBuffer.length) return;
+  const batch = liveBuffer;
+  liveBuffer = [];
+  appendLines(batch);
+}
 
 function panelKey(group, ns, pod, container) {
   return `${group}/${ns}/${pod}/${container}`;
@@ -66,7 +77,8 @@ function connectWS() {
         pauseBuffer.push(msg);
         updatePauseButton();
       } else {
-        appendLine(group, ns, pod, container, msg.ts || '', message, msg.fields || null, msg.level || '');
+        liveBuffer.push(msg);
+        if (!liveRafId) liveRafId = requestAnimationFrame(flushLiveBuffer);
       }
     }
   });
@@ -274,10 +286,9 @@ function updatePauseButton() {
 function togglePause() {
   paused = !paused;
   if (!paused) {
-    for (const msg of pauseBuffer) {
-      appendLine(msg.group, msg.ns, msg.pod, msg.container, msg.ts || '', msg.message, msg.fields || null, msg.level || '');
-    }
+    const batch = pauseBuffer;
     pauseBuffer = [];
+    appendLines(batch);
   }
   updatePauseButton();
 }
