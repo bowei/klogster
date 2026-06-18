@@ -470,11 +470,9 @@ function buildLogEntry(ts, message, fields, level) {
   return entry;
 }
 
-function pruneLines(logEl) {
-  const entries = logEl.querySelectorAll('.log-entry');
-  const toRemove = entries.length - PRUNE_TO;
+function pruneLines(logEl, toRemove) {
   for (let i = 0; i < toRemove; i++) {
-    entries[i].remove();
+    logEl.firstElementChild.remove();
   }
 }
 
@@ -939,7 +937,7 @@ export function appendLines(messages) {
     updateFooter(tab);
 
     if (tab.lineCount > MAX_LINES) {
-      pruneLines(logEl);
+      pruneLines(logEl, tab.lineCount - PRUNE_TO);
       tab.lineCount = PRUNE_TO;
     }
 
@@ -972,7 +970,7 @@ export function prependLines(group, ns, pod, container, lines) {
   logEl.insertBefore(frag, logEl.firstChild);
   tab.lineCount += lines.length;
   if (tab.lineCount > MAX_LINES) {
-    pruneLines(logEl);
+    pruneLines(logEl, tab.lineCount - PRUNE_TO);
     tab.lineCount = PRUNE_TO;
   }
 
