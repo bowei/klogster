@@ -63,6 +63,19 @@ Each line shows:
 - **Message** — main log text, word-wrapped.
 - **Structured fields** — key: value pairs indented below the message when present (e.g. slog or JSON-structured logs).
 
+### Merged view
+
+Each panel column has a **⊕** button on the right side of its tab bar. Clicking it enters merged view:
+
+- All tabs in the column are hidden and replaced by a single combined log stream.
+- Lines from every tab are merged and sorted by timestamp.
+- Each line has a **source label** (`pod/container`) to the left of the message body so you can tell which log stream a line came from.
+- The panel label changes to **Merged Logs** and the footer shows the total combined line count.
+- **Per-tab filters are preserved**: lines filtered out on an individual tab are also hidden in the merged view. The filter button on each individual tab continues to control which lines from that source appear.
+- The ⊕ button turns accent-colored while merged. Click it again, or click any tab, to return to the normal single-tab view.
+
+State persistence includes the merged flag: reloading the page restores merged columns in merged mode after their history is back-filled.
+
 ### Footer
 Shows `N lines · last: X ago` where the relative time (`seconds`, `minutes`, `hours`) updates every second. Gives a quick read on whether the log source is still active.
 
@@ -157,5 +170,6 @@ The full UI state is encoded as base64 JSON in the URL hash and updated whenever
 
 - Which panel columns exist and which tabs are in each column
 - The active tab per column
+- Whether each column is in merged view
 - Per-tab filters
 - Focus patterns and context settings

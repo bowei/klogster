@@ -93,6 +93,115 @@ function applyFilters(tab) {
     entry.style.display = lineVisible(tab.filters, text) ? '' : 'none';
   }
   updateFilterBtn(tab);
+  // Propagate to merged view if this tab's group is currently merged
+  const pg = panelGroups.find(g => g.tabs.includes(tab));
+  if (pg && pg.merged) applyMergedFilters(pg);
+}
+
+// ── Merged view helpers ───────────────────────────────────────────────────────
+
+function applyMergedFilters(pg) {
+  for (const entry of pg.mergedLogEl.querySelectorAll('.log-entry')) {
+    const srcTab = pg.tabs.find(t => t.id === +entry.dataset.srcTabId);
+    if (!srcTab) { entry.style.display = 'none'; continue; }
+    const bodyEl = entry.querySelector('.log-body');
+    const text = bodyEl ? bodyEl.textContent : entry.textContent;
+    entry.style.display = lineVisible(srcTab.filters, text) ? '' : 'none';
+  }
+}
+
+function makeMergedEntry(tab, srcEntry) {
+  const clone = srcEntry.cloneNode(true);
+  clone.dataset.srcTabId = tab.id;
+
+  const srcLabel = document.createElement('span');
+  srcLabel.className = 'log-source';
+  srcLabel.textContent = `${tab.pod}/${tab.container}`;
+  clone.insertBefore(srcLabel, clone.querySelector('.log-body'));
+
+  // Recompute visibility from source tab's filters (ignore focus-based display from source)
+  const bodyEl = clone.querySelector('.log-body');
+  const text = bodyEl ? bodyEl.textContent : '';
+  clone.style.display = lineVisible(tab.filters, text) ? '' : 'none';
+
+  return clone;
+}
+
+function rebuildMergedView(pg) {
+  const mergedLogEl = pg.mergedLogEl;
+  mergedLogEl.innerHTML = '';
+
+  // Collect entries with source tab reference
+  const all = [];
+  for (const tab of pg.tabs) {
+    for (const entry of tab.logEl.querySelectorAll('.log-entry')) {
+      all.push({ ts: entry.dataset.ts || '', tab, entry });
+    }
+  }
+
+  // Sort chronologically; entries without timestamps go to the end
+  all.sort((a, b) => {
+    if (!a.ts && !b.ts) return 0;
+    if (!a.ts) return 1;
+    if (!b.ts) return -1;
+    return a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0;
+  });
+
+  const frag = document.createDocumentFragment();
+  for (const { tab, entry } of all) {
+    frag.appendChild(makeMergedEntry(tab, entry));
+  }
+  mergedLogEl.appendChild(frag);
+
+  pg.mergedEl.querySelector('.panel-footer').textContent = `${all.length.toLocaleString()} lines (merged)`;
+  mergedLogEl.scrollTop = mergedLogEl.scrollHeight;
+}
+
+function appendToMergedView(pg, tab, ts, srcEntry) {
+  const clone = makeMergedEntry(tab, srcEntry);
+  const mergedLogEl = pg.mergedLogEl;
+  const wasAtBottom = mergedLogEl.scrollHeight - mergedLogEl.scrollTop - mergedLogEl.clientHeight < 40;
+
+  if (!ts) {
+    mergedLogEl.appendChild(clone);
+  } else {
+    // Binary-search for insertion point to maintain timestamp order
+    const entries = mergedLogEl.querySelectorAll('.log-entry');
+    let lo = 0, hi = entries.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if ((entries[mid].dataset.ts || '') <= ts) lo = mid + 1;
+      else hi = mid;
+    }
+    mergedLogEl.insertBefore(clone, entries[lo] ?? null);
+  }
+
+  if (wasAtBottom) mergedLogEl.scrollTop = mergedLogEl.scrollHeight;
+
+  const total = mergedLogEl.querySelectorAll('.log-entry').length;
+  pg.mergedEl.querySelector('.panel-footer').textContent = `${total.toLocaleString()} lines (merged)`;
+}
+
+export function toggleMergedView(pgId, activateTabId = null) {
+  const pg = panelGroups.find(g => g.id === pgId);
+  if (!pg) return;
+  pg.merged = !pg.merged;
+
+  if (pg.merged) {
+    for (const tab of pg.tabs) tab.el.classList.add('tab-inactive');
+    pg.mergedEl.classList.remove('tab-inactive');
+    rebuildMergedView(pg);
+  } else {
+    pg.mergedEl.classList.add('tab-inactive');
+    if (activateTabId != null) pg.activeTabId = activateTabId;
+    for (const tab of pg.tabs) {
+      tab.el.classList.toggle('tab-inactive', tab.id !== pg.activeTabId);
+    }
+    focusGroup(pgId);
+  }
+
+  renderGroupTabBar(pg);
+  notifyStateChanged();
 }
 
 function applyPanelFocus(tab) {
@@ -403,11 +512,13 @@ let dragSrc = null; // { srcGroupId, tabId }
 
 function renderGroupTabBar(pg) {
   const tabBar = pg.el.querySelector('.panel-group-tabs');
-  tabBar.innerHTML = '';
+  const tabsScroll = tabBar.querySelector('.panel-group-tabs-scroll');
+  tabsScroll.innerHTML = '';
 
   for (const tab of pg.tabs) {
     const tabEl = document.createElement('div');
-    tabEl.className = 'tab' + (tab.id === pg.activeTabId ? ' active' : '');
+    // In merged mode no tab shows as active; clicking a tab exits merged mode
+    tabEl.className = 'tab' + (tab.id === pg.activeTabId && !pg.merged ? ' active' : '');
     tabEl.dataset.tabId = tab.id;
     tabEl.draggable = true;
 
@@ -427,7 +538,14 @@ function renderGroupTabBar(pg) {
 
     tabEl.appendChild(title);
     tabEl.appendChild(close);
-    tabEl.addEventListener('click', () => activateTab(pg.id, tab.id));
+    tabEl.addEventListener('click', () => {
+      if (pg.merged) {
+        // Clicking a tab exits merged mode and activates that tab
+        toggleMergedView(pg.id, tab.id);
+      } else {
+        activateTab(pg.id, tab.id);
+      }
+    });
 
     tabEl.addEventListener('dragstart', e => {
       dragSrc = { srcGroupId: pg.id, tabId: tab.id };
@@ -453,7 +571,14 @@ function renderGroupTabBar(pg) {
     });
     tabEl.addEventListener('dragend', () => { dragSrc = null; });
 
-    tabBar.appendChild(tabEl);
+    tabsScroll.appendChild(tabEl);
+  }
+
+  // Update merge button state
+  const mergeBtn = tabBar.querySelector('.btn-merge');
+  if (mergeBtn) {
+    mergeBtn.classList.toggle('active', pg.merged);
+    mergeBtn.title = pg.merged ? 'Exit merged view' : 'Merge all logs';
   }
 }
 
@@ -468,18 +593,22 @@ export function addPanelGroup() {
   const tabBar = document.createElement('div');
   tabBar.className = 'panel-group-tabs';
 
+  // Scrollable tab strip
+  const tabsScroll = document.createElement('div');
+  tabsScroll.className = 'panel-group-tabs-scroll';
+
   // Drop zone on empty tab bar space (append to this group)
-  tabBar.addEventListener('dragover', e => {
+  tabsScroll.addEventListener('dragover', e => {
     if (!dragSrc) return;
     if (e.target.closest('.tab')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     tabBar.classList.add('drag-over');
   });
-  tabBar.addEventListener('dragleave', e => {
-    if (!tabBar.contains(e.relatedTarget)) tabBar.classList.remove('drag-over');
+  tabsScroll.addEventListener('dragleave', e => {
+    if (!tabsScroll.contains(e.relatedTarget)) tabBar.classList.remove('drag-over');
   });
-  tabBar.addEventListener('drop', e => {
+  tabsScroll.addEventListener('drop', e => {
     tabBar.classList.remove('drag-over');
     if (!dragSrc) return;
     if (e.target.closest('.tab')) return; // handled by tab's drop listener
@@ -491,12 +620,51 @@ export function addPanelGroup() {
     dragSrc = null;
   });
 
+  // Merge toggle button — fixed on right of tab bar, always visible
+  const mergeBtn = document.createElement('button');
+  mergeBtn.className = 'btn-merge';
+  mergeBtn.textContent = '⊕';
+  mergeBtn.title = 'Merge all logs';
+  mergeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    toggleMergedView(pgId);
+  });
+
+  tabBar.appendChild(tabsScroll);
+  tabBar.appendChild(mergeBtn);
   el.appendChild(tabBar);
+
+  // Merged view panel (hidden until merged mode is toggled on)
+  const mergedPanelEl = document.createElement('div');
+  mergedPanelEl.className = 'panel tab-inactive';
+
+  const mergedToolbar = document.createElement('div');
+  mergedToolbar.className = 'panel-toolbar';
+  const mergedLabel = document.createElement('span');
+  mergedLabel.className = 'panel-label';
+  mergedLabel.textContent = 'Merged Logs';
+  mergedToolbar.appendChild(mergedLabel);
+
+  const mergedLogEl = document.createElement('div');
+  mergedLogEl.className = 'panel-log';
+
+  const mergedWrap = document.createElement('div');
+  mergedWrap.className = 'panel-log-wrap';
+  mergedWrap.appendChild(mergedLogEl);
+
+  const mergedFooter = document.createElement('div');
+  mergedFooter.className = 'panel-footer';
+  mergedFooter.textContent = '0 lines (merged)';
+
+  mergedPanelEl.appendChild(mergedToolbar);
+  mergedPanelEl.appendChild(mergedWrap);
+  mergedPanelEl.appendChild(mergedFooter);
+  el.appendChild(mergedPanelEl);
 
   // Clicking anywhere in this panel group focuses it
   el.addEventListener('mousedown', () => focusGroup(pgId));
 
-  const pg = { id: pgId, el, activeTabId: null, tabs: [] };
+  const pg = { id: pgId, el, activeTabId: null, tabs: [], merged: false, mergedEl: mergedPanelEl, mergedLogEl };
   panelGroups.push(pg);
   document.getElementById('panels-container').appendChild(el);
   focusGroup(pgId);
@@ -524,7 +692,8 @@ function activateTab(groupId, tabId) {
   pg.activeTabId = tabId;
 
   for (const tab of pg.tabs) {
-    tab.el.classList.toggle('tab-inactive', tab.id !== tabId);
+    // In merged mode all tab panels stay hidden
+    tab.el.classList.toggle('tab-inactive', pg.merged || tab.id !== tabId);
   }
 
   renderGroupTabBar(pg);
@@ -553,9 +722,10 @@ function removeTab(groupId, tabId) {
     if (pg.activeTabId === tabId) {
       const next = pg.tabs[Math.min(idx, pg.tabs.length - 1)];
       pg.activeTabId = next.id;
-      for (const t of pg.tabs) t.el.classList.toggle('tab-inactive', t.id !== pg.activeTabId);
+      for (const t of pg.tabs) t.el.classList.toggle('tab-inactive', pg.merged || t.id !== pg.activeTabId);
     }
     renderGroupTabBar(pg);
+    if (pg.merged) rebuildMergedView(pg);
   }
   notifyStateChanged();
 }
@@ -578,9 +748,10 @@ function moveTab(srcGroupId, tabId, dstGroupId, beforeTabId) {
     if (srcWasActive) {
       const next = srcPg.tabs[Math.min(srcIdx, srcPg.tabs.length - 1)];
       srcPg.activeTabId = next.id;
-      for (const t of srcPg.tabs) t.el.classList.toggle('tab-inactive', t.id !== srcPg.activeTabId);
+      for (const t of srcPg.tabs) t.el.classList.toggle('tab-inactive', srcPg.merged || t.id !== srcPg.activeTabId);
     }
     renderGroupTabBar(srcPg);
+    if (srcPg.merged) rebuildMergedView(srcPg);
   }
 
   // Insert into destination group
@@ -596,6 +767,7 @@ function moveTab(srcGroupId, tabId, dstGroupId, beforeTabId) {
   dstPg.el.appendChild(tab.el);
 
   activateTab(dstGroupId, tabId);
+  if (dstPg.merged) rebuildMergedView(dstPg);
   notifyStateChanged();
 }
 
@@ -695,6 +867,10 @@ export function openPanel(group, ns, pod, container, _onClose) {
   }));
 
   activateTab(pg.id, tabId);
+  // If the group is already in merged mode, include the new tab's panel
+  // (history not loaded yet, but live lines will flow via appendToMergedView;
+  //  prependLines will call rebuildMergedView once history arrives)
+  if (pg.merged) tab.el.classList.add('tab-inactive');
   return tabId;
 }
 
@@ -710,11 +886,10 @@ export function closePanel(id) {
 export function appendLine(group, ns, pod, container, ts, message, fields, level) {
   const result = getTabByKey(group, ns, pod, container);
   if (!result) return;
-  const { tab } = result;
+  const { tab, pg } = result;
   const { logEl } = tab;
 
-  const pg = panelGroups.find(g => g.id === result.pg.id);
-  const isActive = pg && pg.activeTabId === tab.id;
+  const isActive = pg.activeTabId === tab.id && !pg.merged;
   const atBottom = isActive
     ? logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40
     : true; // always track bottom for hidden tabs
@@ -748,12 +923,14 @@ export function appendLine(group, ns, pod, container, ts, message, fields, level
   if (isActive && atBottom) {
     logEl.scrollTop = logEl.scrollHeight;
   }
+
+  if (pg.merged) appendToMergedView(pg, tab, ts, entry);
 }
 
 export function prependLines(group, ns, pod, container, lines) {
   const result = getTabByKey(group, ns, pod, container);
   if (!result || !lines.length) return;
-  const { tab } = result;
+  const { tab, pg } = result;
   const { logEl } = tab;
 
   const frag = document.createDocumentFragment();
@@ -782,6 +959,7 @@ export function prependLines(group, ns, pod, container, lines) {
   }
   updateFooter(tab);
   applyPanelFocus(tab);
+  if (pg.merged) rebuildMergedView(pg);
 }
 
 // ── State serialization ───────────────────────────────────────────────────────
@@ -796,6 +974,7 @@ export function getSerializableState() {
   return panelGroups.map(pg => {
     const activeTab = pg.tabs.find(t => t.id === pg.activeTabId);
     return {
+      merged: pg.merged,
       activeTab: activeTab
         ? { group: activeTab.group, ns: activeTab.ns, pod: activeTab.pod, container: activeTab.container }
         : null,

@@ -1,4 +1,4 @@
-import { openPanel, closePanel, addPanelGroup, appendLine, prependLines, getPanelIds, applyFocusToAll, getSerializableState, restoreFilters, setActivePanelByKey } from './panels.js';
+import { openPanel, closePanel, addPanelGroup, appendLine, prependLines, getPanelIds, applyFocusToAll, getSerializableState, restoreFilters, setActivePanelByKey, toggleMergedView } from './panels.js';
 import { openFocusDialog, focusState, restoreFocusState } from './focus.js';
 import { saveState, loadState } from './state.js';
 
@@ -197,12 +197,13 @@ async function restoreFromHash() {
   if (!saved || !saved.panelGroups || !saved.panelGroups.length) return;
 
   restoringState = true;
+  const mergedGroupIds = [];
   try {
     if (saved.focus) restoreFocusState(saved.focus);
 
     const promises = [];
     for (const savedPg of saved.panelGroups) {
-      addPanelGroup(); // creates and focuses a new empty group
+      const pg = addPanelGroup();
       for (const t of (savedPg.tabs || [])) {
         const p = openPodPanel(t.group, t.ns, t.pod, t.container);
         if (t.filters && t.filters.length) {
@@ -214,11 +215,17 @@ async function restoreFromHash() {
         const at = savedPg.activeTab;
         setActivePanelByKey(at.group, at.ns, at.pod, at.container);
       }
+      if (savedPg.merged) mergedGroupIds.push(pg.id);
     }
 
     if (focusState.active) applyFocusToAll();
 
     await Promise.allSettled(promises);
+
+    // Restore merged view after history has loaded so rebuildMergedView has all lines
+    for (const pgId of mergedGroupIds) {
+      toggleMergedView(pgId);
+    }
   } finally {
     restoringState = false;
   }

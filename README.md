@@ -160,6 +160,12 @@ continue streaming in the background and become visible when clicked.
 * Close a tab with **✕**. When the last tab in a column is closed, the column
   is removed.
 
+**Merged view:**
+* Click **⊕** (right side of the tab bar) to combine all tabs in a column into a
+  single, timestamp-sorted log stream. Each line is labeled with its source
+  pod/container. Per-tab filters remain active in merged view.
+* Click **⊕** again (or click any tab) to return to the normal single-tab view.
+
 **State persistence:** the URL hash encodes the full layout — which pods are
 open, which column they're in, the active tab per column, per-tab filters, and
 focus state. Copy or bookmark the URL to restore the exact view on reload.

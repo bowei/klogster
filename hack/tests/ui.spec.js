@@ -3,6 +3,18 @@ import { test, expect } from '@playwright/test';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+async function openTwoPods(page) {
+  await page.click('#btn-open-sidebar');
+  await expect(page.locator('.pod-item').first()).toBeVisible({ timeout: 5000 });
+  await page.locator('.pod-item').nth(0).click();
+  await expect(page.locator('#sidebar')).toHaveClass(/hidden/);
+
+  await page.click('#btn-open-sidebar');
+  await page.locator('.pod-item').nth(1).click();
+
+  await expect(page.locator('.panel-group-tabs .tab')).toHaveCount(2);
+}
+
 async function openFirstPod(page) {
   await page.click('#btn-open-sidebar');
   await expect(page.locator('#sidebar')).not.toHaveClass(/hidden/);
@@ -287,6 +299,128 @@ test.describe('settings dialog', () => {
     // Now switch back to dark — data-theme attribute must be removed.
     await page.locator('.theme-option:has(input[value="dark"])').click();
     await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+  });
+});
+
+test.describe('merge logs', () => {
+  test('merge button is present in every panel group tab bar', async ({ page }) => {
+    await page.goto('/');
+    await openFirstPod(page);
+    await expect(page.locator('.panel-group .btn-merge')).toHaveCount(1);
+    await expect(page.locator('.btn-merge')).toHaveText('⊕');
+    await expect(page.locator('.btn-merge')).toHaveAttribute('title', 'Merge all logs');
+  });
+
+  test('clicking merge shows Merged Logs label and hides individual tab panels', async ({ page }) => {
+    await page.goto('/');
+    await openTwoPods(page);
+
+    await page.locator('.btn-merge').click();
+
+    // One panel visible, and its label says "Merged Logs"
+    const activePanel = page.locator('.panel:not(.tab-inactive)');
+    await expect(activePanel).toHaveCount(1);
+    await expect(activePanel.locator('.panel-label')).toHaveText('Merged Logs');
+  });
+
+  test('merged panel shows source labels on log entries', async ({ page }) => {
+    await page.goto('/');
+    await openTwoPods(page);
+
+    // Wait for history lines to arrive in the active tab
+    await expect(page.locator('.panel:not(.tab-inactive) .log-entry').first()).toBeVisible({ timeout: 8000 });
+
+    await page.locator('.btn-merge').click();
+
+    // Source labels should appear on entries in the merged panel
+    await expect(page.locator('.panel:not(.tab-inactive) .log-source').first()).toBeVisible({ timeout: 3000 });
+  });
+
+  test('merge button gets active class when merged', async ({ page }) => {
+    await page.goto('/');
+    await openTwoPods(page);
+
+    const mergeBtn = page.locator('.btn-merge');
+    await expect(mergeBtn).not.toHaveClass(/active/);
+
+    await mergeBtn.click();
+    await expect(mergeBtn).toHaveClass(/active/);
+    await expect(mergeBtn).toHaveAttribute('title', 'Exit merged view');
+  });
+
+  test('clicking a tab while merged exits merged mode and activates that tab', async ({ page }) => {
+    await page.goto('/');
+    await openTwoPods(page);
+
+    await page.locator('.btn-merge').click();
+    await expect(page.locator('.btn-merge')).toHaveClass(/active/);
+
+    // Click first tab — should exit merged mode
+    await page.locator('.panel-group-tabs .tab').nth(0).click();
+    await expect(page.locator('.btn-merge')).not.toHaveClass(/active/);
+
+    // The clicked tab should now be active, not the merged panel
+    await expect(page.locator('.panel-group-tabs .tab').nth(0)).toHaveClass(/active/);
+    await expect(page.locator('.panel:not(.tab-inactive) .panel-label')).not.toHaveText('Merged Logs');
+  });
+
+  test('clicking merge button again exits merged mode', async ({ page }) => {
+    await page.goto('/');
+    await openTwoPods(page);
+
+    const mergeBtn = page.locator('.btn-merge');
+    await mergeBtn.click();
+    await expect(mergeBtn).toHaveClass(/active/);
+
+    await mergeBtn.click();
+    await expect(mergeBtn).not.toHaveClass(/active/);
+    // An individual tab panel is visible again
+    await expect(page.locator('.panel:not(.tab-inactive) .panel-label')).not.toHaveText('Merged Logs');
+  });
+
+  test('merged view footer counts total lines', async ({ page }) => {
+    await page.goto('/');
+    await openTwoPods(page);
+
+    await expect(page.locator('.panel:not(.tab-inactive) .log-entry').first()).toBeVisible({ timeout: 8000 });
+
+    await page.locator('.btn-merge').click();
+
+    const footer = page.locator('.panel:not(.tab-inactive) .panel-footer');
+    await expect(footer).toContainText('lines (merged)');
+  });
+
+  test('per-tab filters are preserved in merged view', async ({ page }) => {
+    await page.goto('/');
+    await openTwoPods(page);
+
+    // Wait for history entries to populate in the active tab
+    await expect(page.locator('.panel:not(.tab-inactive) .log-entry').first()).toBeVisible({ timeout: 8000 });
+
+    // Activate tab 0 and add a negative filter — "LOG" matches many postgres lines
+    await page.locator('.panel-group-tabs .tab').nth(0).click();
+    await page.locator('.panel:not(.tab-inactive) .btn-filter').click();
+    await page.selectOption('.filter-type-select', 'negative');
+    await page.fill('.filter-pattern-input', 'LOG');
+    await page.click('.filter-add-btn');
+    await page.keyboard.press('Escape');
+
+    // Verify the filter actually hid some lines in the tab
+    const tab0Log = page.locator('.panel:not(.tab-inactive) .panel-log');
+    const tab0Hidden = await tab0Log.evaluate(el =>
+      [...el.querySelectorAll('.log-entry')].some(e => e.style.display === 'none')
+    );
+    expect(tab0Hidden).toBe(true);
+
+    // Enter merged view
+    await page.locator('.btn-merge').click();
+
+    // Merged panel should also have some hidden lines (from tab 0's filter)
+    const mergedLog = page.locator('.panel:not(.tab-inactive) .panel-log');
+    const mergedHasSomeHidden = await mergedLog.evaluate(el =>
+      [...el.querySelectorAll('.log-entry')].some(e => e.style.display === 'none')
+    );
+    expect(mergedHasSomeHidden).toBe(true);
   });
 });
 
