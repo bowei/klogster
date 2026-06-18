@@ -21,7 +21,7 @@ function panelKey(group, ns, pod, container) {
 function serializeFocus() {
   return {
     active: focusState.active,
-    pattern: focusState.pattern,
+    patterns: focusState.patterns.map(p => p.pattern),
     contextType: focusState.contextType,
     contextAmount: focusState.contextAmount,
     contextDirection: focusState.contextDirection,

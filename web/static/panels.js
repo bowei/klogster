@@ -1,5 +1,5 @@
 import { attachScrollSync, showCrosshairs, clearCrosshairs } from './timeline.js';
-import { focusState, updateFocusCount } from './focus.js';
+import { focusState, updateFocusCount, lineMatchesFocus, buildFocusHighlightRe } from './focus.js';
 
 const MAX_LINES = 5000;
 const PRUNE_TO = 4000;
@@ -36,6 +36,44 @@ function lineVisible(filters, text) {
   return true;
 }
 
+function escapeHtml(text) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function highlightText(text, re) {
+  if (!re) return escapeHtml(text);
+  re.lastIndex = 0;
+  let result = '';
+  let last = 0;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    result += escapeHtml(text.slice(last, m.index));
+    result += `<mark class="focus-match">${escapeHtml(m[0])}</mark>`;
+    last = m.index + m[0].length;
+    if (m[0].length === 0) re.lastIndex++;
+  }
+  return result + escapeHtml(text.slice(last));
+}
+
+function applyHighlight(entry, re) {
+  const bodyEl = entry.querySelector('.log-body');
+  if (!bodyEl) return;
+  for (const child of bodyEl.children) {
+    child.innerHTML = highlightText(child.textContent, re);
+  }
+}
+
+function clearHighlight(entry) {
+  const bodyEl = entry.querySelector('.log-body');
+  if (!bodyEl) return;
+  for (const child of bodyEl.children) {
+    if (child.querySelector('.focus-match')) {
+      // textContent strips HTML tags, preserving original text
+      child.textContent = child.textContent;
+    }
+  }
+}
+
 function applyFilters(p) {
   for (const entry of p.logEl.querySelectorAll('.log-entry')) {
     const bodyEl = entry.querySelector('.log-body');
@@ -48,7 +86,8 @@ function applyFilters(p) {
 function applyPanelFocus(p) {
   const entries = [...p.logEl.querySelectorAll('.log-entry')];
 
-  if (!focusState.active || !focusState.re) {
+  if (!focusState.active) {
+    for (const entry of entries) clearHighlight(entry);
     applyFilters(p);
     return;
   }
@@ -57,8 +96,9 @@ function applyPanelFocus(p) {
   const matchIdxs = [];
   entries.forEach((entry, i) => {
     const text = entry.querySelector('.log-body')?.textContent ?? entry.textContent;
-    if (focusState.re.test(text)) matchIdxs.push(i);
+    if (lineMatchesFocus(text)) matchIdxs.push(i);
   });
+  const matchSet = new Set(matchIdxs);
 
   // Pass 2: expand to context windows
   const visible = new Set();
@@ -82,10 +122,18 @@ function applyPanelFocus(p) {
     }
   }
 
-  // Apply: must be in context window AND pass per-panel filters
+  const highlightRe = buildFocusHighlightRe();
+
+  // Apply: must be in context window AND pass per-panel filters; highlight direct matches
   entries.forEach((entry, i) => {
     const text = entry.querySelector('.log-body')?.textContent ?? entry.textContent;
-    entry.style.display = visible.has(i) && lineVisible(p.filters, text) ? '' : 'none';
+    const show = visible.has(i) && lineVisible(p.filters, text);
+    entry.style.display = show ? '' : 'none';
+    if (show && matchSet.has(i)) {
+      applyHighlight(entry, highlightRe);
+    } else {
+      clearHighlight(entry);
+    }
   });
 
   updateFilterBtn(p);
@@ -94,12 +142,12 @@ function applyPanelFocus(p) {
 function countFocusMatches() {
   let matchCount = 0;
   let totalCount = 0;
-  if (focusState.active && focusState.re) {
+  if (focusState.active) {
     for (const p of panels) {
       for (const entry of p.logEl.querySelectorAll('.log-entry')) {
         totalCount++;
         const text = entry.querySelector('.log-body')?.textContent ?? entry.textContent;
-        if (focusState.re.test(text)) matchCount++;
+        if (lineMatchesFocus(text)) matchCount++;
       }
     }
     updateFocusCount(matchCount, totalCount);
@@ -510,8 +558,13 @@ export function appendLine(group, ns, pod, container, ts, message, fields, level
   const bodyEl = entry.querySelector('.log-body');
   const text = bodyEl ? bodyEl.textContent : message || '';
   const panelVisible = lineVisible(p.filters, text);
-  const focusVisible = !focusState.active || !focusState.re || focusState.re.test(text);
-  if (!panelVisible || !focusVisible) entry.style.display = 'none';
+  const matches = focusState.active && lineMatchesFocus(text);
+  const focusVisible = !focusState.active || matches;
+  if (!panelVisible || !focusVisible) {
+    entry.style.display = 'none';
+  } else if (matches) {
+    applyHighlight(entry, buildFocusHighlightRe());
+  }
 
   logEl.appendChild(entry);
   p.lineCount++;

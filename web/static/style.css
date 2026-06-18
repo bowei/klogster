@@ -453,15 +453,66 @@ body {
   letter-spacing: 0.05em;
 }
 
-.focus-pat-row {
+.focus-list {
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.focus-empty {
+  padding: 8px 10px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.focus-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+.focus-item:last-child { border-bottom: none; }
+
+.focus-item-pattern {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  color: var(--text);
+}
+.focus-item-pattern-invalid { color: #f44747; }
+
+.focus-remove {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.focus-remove:hover { color: var(--text); }
+
+.focus-add-row {
+  padding: 6px 10px 4px;
+  border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px 10px 6px;
+}
+
+.focus-add-inputs {
+  display: flex;
+  gap: 4px;
+  align-items: center;
 }
 
 .focus-pattern-input {
-  width: 100%;
+  flex: 1;
   background: var(--bg3);
   border: 1px solid var(--border);
   color: var(--text);
@@ -469,9 +520,22 @@ body {
   border-radius: 3px;
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   font-size: 12px;
+  min-width: 0;
 }
 .focus-pattern-input:focus { outline: none; border-color: var(--accent); }
 .focus-pattern-input::placeholder { color: var(--text-dim); }
+
+.focus-add-btn {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.focus-add-btn:hover { background: var(--accent-hover); }
 
 .focus-pat-err {
   font-size: 11px;
@@ -483,8 +547,9 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 10px 8px;
+  padding: 6px 10px 8px;
   flex-wrap: wrap;
+  border-top: 1px solid var(--border);
 }
 
 .focus-ctx-label {
@@ -522,6 +587,14 @@ body {
   color: var(--text-dim);
   border-top: 1px solid var(--border);
   font-style: italic;
+}
+
+/* ── Focus match highlight ── */
+mark.focus-match {
+  background: rgba(255, 200, 0, 0.28);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
 }
 
 /* ── Sidebar ── */

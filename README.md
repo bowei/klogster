@@ -126,19 +126,16 @@ For logging formats that are structured fields should be display like this:
 
 ### Focus dialog
 
-Put a "Focus" button to the left of the tabs to globally focus the logs
-filter across all of the tabs.
-
-The focus dialog will enable filtering of logs across all of the panels
-in an intelligent way by filtering for the same string across all of the
-logs. An example would be a trace UUID that appears in multiple logs.
+The Focus button (left of the tab bar) filters all panels simultaneously.
+Lines matching any of the active focus patterns are shown and the matching
+text is highlighted. A useful example: add a trace UUID to see every panel
+that mentions it, with surrounding context for free.
 
 Focus options:
 
-* Regexp text to match for.
-* Context: This will behave like `grep -C3` where a matching log line will
-  also show log lines nearby. This should have the following options:
-  * Line-based context: number of surrounding lines to show.
-  * Time-based context: show surrounding log lines from within a
-    particular time-bound.
-  * Give context from before, around or after the matching log line
+* **Patterns**: one or more regexps (OR logic — a line is shown if it matches
+  any pattern). Each pattern is listed and can be removed individually.
+* **Context**: like `grep -C3` — also show lines near each match.
+  * Line-based: number of surrounding lines to include.
+  * Time-based: show lines within N seconds of each match.
+  * Direction: before, around (default), or after each match.

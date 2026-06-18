@@ -1,11 +1,10 @@
 // Global focus state — applied across all panels simultaneously.
 export const focusState = {
   active: false,
-  pattern: '',
-  re: null,              // compiled RegExp, null if empty/invalid
-  contextType: 'line',   // 'line' | 'time'
-  contextAmount: 3,      // lines, or seconds
-  contextDirection: 'around', // 'before' | 'around' | 'after'
+  patterns: [],   // [{pattern: string, re: RegExp|null}]
+  contextType: 'line',
+  contextAmount: 3,
+  contextDirection: 'around',
 };
 
 let activeFocusDialog = null;
@@ -17,13 +16,24 @@ function notifyChanged() {
 
 function updateFocusBtn() {
   if (!focusBtn) return;
-  if (focusState.active) {
-    focusBtn.textContent = 'focus ●';
+  const n = focusState.patterns.length;
+  if (focusState.active && n > 0) {
+    focusBtn.textContent = `focus (${n})`;
     focusBtn.classList.add('active');
   } else {
     focusBtn.textContent = 'Focus';
     focusBtn.classList.remove('active');
   }
+}
+
+export function lineMatchesFocus(text) {
+  return focusState.patterns.some(p => p.re && p.re.test(text));
+}
+
+export function buildFocusHighlightRe() {
+  const valid = focusState.patterns.filter(p => p.re);
+  if (!valid.length) return null;
+  return new RegExp(valid.map(p => `(?:${p.pattern})`).join('|'), 'gi');
 }
 
 export function openFocusDialog(btn) {
@@ -44,22 +54,102 @@ export function openFocusDialog(btn) {
   header.className = 'focus-dialog-header';
   header.textContent = 'Focus';
 
-  // Pattern row
-  const patRow = document.createElement('div');
-  patRow.className = 'focus-pat-row';
+  // Pattern list
+  const listEl = document.createElement('div');
+  listEl.className = 'focus-list';
+
+  function renderList() {
+    listEl.innerHTML = '';
+    if (focusState.patterns.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'focus-empty';
+      empty.textContent = 'No patterns yet';
+      listEl.appendChild(empty);
+      return;
+    }
+    focusState.patterns.forEach((fp, i) => {
+      const item = document.createElement('div');
+      item.className = 'focus-item';
+
+      const pat = document.createElement('span');
+      pat.className = 'focus-item-pattern' + (fp.re ? '' : ' focus-item-pattern-invalid');
+      pat.textContent = fp.pattern;
+      pat.title = fp.re ? fp.pattern : `Invalid regexp: ${fp.pattern}`;
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'focus-remove';
+      removeBtn.textContent = '×';
+      removeBtn.addEventListener('click', () => {
+        focusState.patterns.splice(i, 1);
+        focusState.active = focusState.patterns.length > 0;
+        updateFocusBtn();
+        notifyChanged();
+        renderList();
+        updateStatus();
+      });
+
+      item.appendChild(pat);
+      item.appendChild(removeBtn);
+      listEl.appendChild(item);
+    });
+  }
+
+  // Add row
+  const addRow = document.createElement('div');
+  addRow.className = 'focus-add-row';
+
+  const addInputs = document.createElement('div');
+  addInputs.className = 'focus-add-inputs';
 
   const patInput = document.createElement('input');
   patInput.type = 'text';
   patInput.className = 'focus-pattern-input';
   patInput.placeholder = 'regexp to match…';
   patInput.spellcheck = false;
-  patInput.value = focusState.pattern;
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'focus-add-btn';
+  addBtn.textContent = 'Add';
 
   const errEl = document.createElement('span');
   errEl.className = 'focus-pat-err';
 
-  patRow.appendChild(patInput);
-  patRow.appendChild(errEl);
+  addInputs.appendChild(patInput);
+  addInputs.appendChild(addBtn);
+  addRow.appendChild(addInputs);
+  addRow.appendChild(errEl);
+
+  function doAdd() {
+    const raw = patInput.value.trim();
+    errEl.textContent = '';
+    if (!raw) return;
+    let re = null;
+    try {
+      re = new RegExp(raw, 'i');
+    } catch {
+      errEl.textContent = 'Invalid regexp';
+      return;
+    }
+    if (focusState.patterns.some(p => p.pattern === raw)) {
+      patInput.value = '';
+      patInput.focus();
+      return;
+    }
+    focusState.patterns.push({ pattern: raw, re });
+    focusState.active = true;
+    updateFocusBtn();
+    notifyChanged();
+    renderList();
+    updateStatus();
+    patInput.value = '';
+    patInput.focus();
+  }
+
+  addBtn.addEventListener('click', doAdd);
+  patInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') doAdd();
+    if (e.key === 'Escape') { dialog.remove(); activeFocusDialog = null; }
+  });
 
   // Context row
   const ctxRow = document.createElement('div');
@@ -106,41 +196,13 @@ export function openFocusDialog(btn) {
   statusEl.className = 'focus-status';
 
   dialog.appendChild(header);
-  dialog.appendChild(patRow);
+  dialog.appendChild(listEl);
+  dialog.appendChild(addRow);
   dialog.appendChild(ctxRow);
   dialog.appendChild(statusEl);
 
   document.body.appendChild(dialog);
   positionDialog(btn, dialog);
-
-  // ── Event handlers ──────────────────────────────────────────────
-
-  function applyPattern() {
-    const raw = patInput.value.trim();
-    errEl.textContent = '';
-    if (!raw) {
-      focusState.active = false;
-      focusState.pattern = '';
-      focusState.re = null;
-      updateFocusBtn();
-      notifyChanged();
-      updateStatus();
-      return;
-    }
-    let re = null;
-    try {
-      re = new RegExp(raw, 'i');
-    } catch (e) {
-      errEl.textContent = 'Invalid regexp';
-      return;
-    }
-    focusState.active = true;
-    focusState.pattern = raw;
-    focusState.re = re;
-    updateFocusBtn();
-    notifyChanged();
-    updateStatus();
-  }
 
   function applyContext() {
     focusState.contextType = typeSelect.value;
@@ -152,23 +214,17 @@ export function openFocusDialog(btn) {
   }
 
   function updateStatus() {
-    if (!focusState.active || !focusState.re) {
+    if (!focusState.active || focusState.patterns.length === 0) {
       statusEl.textContent = 'No active focus';
       return;
     }
     document.dispatchEvent(new CustomEvent('focus:count-request', { detail: { statusEl } }));
   }
 
-  patInput.addEventListener('input', applyPattern);
-  patInput.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { dialog.remove(); activeFocusDialog = null; }
-  });
-
   typeSelect.addEventListener('change', applyContext);
   amountInput.addEventListener('input', applyContext);
   dirSelect.addEventListener('change', applyContext);
 
-  // Click outside to close
   function onOutside(e) {
     if (!dialog.contains(e.target) && e.target !== btn) {
       dialog.remove();
@@ -178,8 +234,8 @@ export function openFocusDialog(btn) {
   }
   setTimeout(() => document.addEventListener('mousedown', onOutside, true), 0);
 
+  renderList();
   patInput.focus();
-  patInput.select();
   updateStatus();
 }
 
@@ -198,15 +254,22 @@ export function updateFocusCount(matchCount, totalCount) {
 }
 
 export function restoreFocusState(saved) {
-  if (!saved || !saved.pattern) return;
+  if (!saved) return;
   focusBtn = document.getElementById('btn-focus');
-  focusState.pattern = saved.pattern;
   focusState.contextType = saved.contextType || 'line';
   focusState.contextAmount = saved.contextAmount ?? 3;
   focusState.contextDirection = saved.contextDirection || 'around';
-  focusState.active = Boolean(saved.active);
-  if (focusState.active && focusState.pattern) {
-    try { focusState.re = new RegExp(focusState.pattern, 'i'); } catch {}
-  }
+
+  // Support old format (saved.pattern string) and new format (saved.patterns array)
+  const patternStrings = Array.isArray(saved.patterns)
+    ? saved.patterns
+    : (saved.pattern ? [saved.pattern] : []);
+
+  focusState.patterns = patternStrings.map(pat => {
+    let re = null;
+    try { re = new RegExp(pat, 'i'); } catch {}
+    return { pattern: pat, re };
+  });
+  focusState.active = Boolean(saved.active) && focusState.patterns.length > 0;
   updateFocusBtn();
 }
