@@ -455,7 +455,7 @@ export function openPanel(group, ns, pod, container, onClose) {
 
   filterBtn.addEventListener('click', () => openFilterDialog(panel));
 
-  attachScrollSync(logEl, getAllLogEls, () => logEl._scrollLocked);
+  panel._cleanupScrollSync = attachScrollSync(logEl, getAllLogEls, () => logEl._scrollLocked);
 
   logEl.addEventListener('mouseover', e => {
     const line = e.target.closest('.log-entry[data-ts]');
@@ -478,6 +478,7 @@ function removePanel(id) {
   const idx = panels.findIndex(p => p.id === id);
   if (idx < 0) return;
   const [p] = panels.splice(idx, 1);
+  if (p._cleanupScrollSync) p._cleanupScrollSync();
   p.el.remove();
 
   if (panels.length > 0 && !panels.some(x => x.active)) {

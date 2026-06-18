@@ -98,24 +98,31 @@ export function clearCrosshairs(allPanels) {
 }
 
 export function attachScrollSync(logEl, getOtherLogs, isLocked) {
+  let debounceTimer = null;
+
   logEl.addEventListener('scroll', () => {
     if (syncInProgress) return;
     if (!isLocked()) return;
 
-    const anchorTs = topVisibleTimestamp(logEl);
-    if (!anchorTs) return;
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      const anchorTs = topVisibleTimestamp(logEl);
+      if (!anchorTs) return;
 
-    syncInProgress = true;
-    requestAnimationFrame(() => {
-      for (const other of getOtherLogs()) {
-        if (other === logEl) continue;
-        if (!other._scrollLocked) continue;
-        const span = findClosestSpan(other, anchorTs);
-        if (span) {
-          span.scrollIntoView({ block: 'start', behavior: 'instant' });
+      syncInProgress = true;
+      requestAnimationFrame(() => {
+        for (const other of getOtherLogs()) {
+          if (other === logEl) continue;
+          if (!other._scrollLocked) continue;
+          const span = findClosestSpan(other, anchorTs);
+          if (span) {
+            span.scrollIntoView({ block: 'start', behavior: 'instant' });
+          }
         }
-      }
-      syncInProgress = false;
-    });
+        syncInProgress = false;
+      });
+    }, 100);
   }, { passive: true });
+
+  return () => clearTimeout(debounceTimer);
 }
