@@ -141,7 +141,7 @@ function renderSidebar() {
   if (!groups.length) {
     const empty = document.createElement('div');
     empty.className = 'panel-status';
-    empty.textContent = 'No pods discovered yet…';
+    empty.textContent = 'No logs discovered yet…';
     list.appendChild(empty);
     return;
   }
