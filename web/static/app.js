@@ -110,8 +110,8 @@ document.addEventListener('panel:opened', e => {
   openPanelKeyCounts.set(key, count + 1);
   if (count === 0) {
     wsSend({ type: 'subscribe', group, ns, pod, container });
+    updateSidebarItemOpen(key, true);
   }
-  renderSidebar();
 });
 
 document.addEventListener('panel:closed', e => {
@@ -121,10 +121,10 @@ document.addEventListener('panel:closed', e => {
   if (count <= 1) {
     openPanelKeyCounts.delete(key);
     wsSend({ type: 'unsubscribe', group, ns, pod, container });
+    updateSidebarItemOpen(key, false);
   } else {
     openPanelKeyCounts.set(key, count - 1);
   }
-  renderSidebar();
 });
 
 async function openPodPanel(group, ns, pod, container) {
@@ -145,16 +145,24 @@ async function openPodPanel(group, ns, pod, container) {
 // ── Sidebar ────────────────────────────────────────────────────────────────
 
 let groups = [];
+// Maps panelKey -> sidebar item element; rebuilt only when pod list changes.
+const sidebarItems = new Map();
 
-function renderSidebar() {
+function updateSidebarItemOpen(key, isOpen) {
+  sidebarItems.get(key)?.classList.toggle('open', isOpen);
+}
+
+function buildSidebar() {
+  sidebarItems.clear();
   const list = document.getElementById('pod-list');
-  list.innerHTML = '';
+  const frag = document.createDocumentFragment();
 
   if (!groups.length) {
     const empty = document.createElement('div');
     empty.className = 'panel-status';
     empty.textContent = 'No logs discovered yet…';
-    list.appendChild(empty);
+    frag.appendChild(empty);
+    list.replaceChildren(frag);
     return;
   }
 
@@ -162,7 +170,7 @@ function renderSidebar() {
     const heading = document.createElement('div');
     heading.className = 'pod-group-name';
     heading.textContent = g.name;
-    list.appendChild(heading);
+    frag.appendChild(heading);
 
     for (const p of (g.pods || [])) {
       const key = panelKey(g.name, p.namespace, p.pod, p.container);
@@ -188,9 +196,12 @@ function renderSidebar() {
         openPodPanel(g.name, p.namespace, p.pod, p.container);
         document.getElementById('sidebar').classList.add('hidden');
       });
-      list.appendChild(item);
+
+      sidebarItems.set(key, item);
+      frag.appendChild(item);
     }
   }
+  list.replaceChildren(frag);
 }
 
 async function pollGroups() {
@@ -198,7 +209,7 @@ async function pollGroups() {
     const resp = await fetch('/api/groups');
     const data = await resp.json();
     groups = data.groups || [];
-    renderSidebar();
+    buildSidebar();
   } catch { /* server not ready yet */ }
 }
 
