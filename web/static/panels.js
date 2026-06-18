@@ -213,6 +213,7 @@ function applyPanelFocus(tab) {
   const entries = [...tab.logEl.querySelectorAll('.log-entry')];
 
   if (!focusState.active) {
+    tab.focusMatchCount = 0;
     for (const entry of entries) clearHighlight(entry);
     applyFilters(tab);
     return;
@@ -278,24 +279,22 @@ function applyPanelFocus(tab) {
     }
   });
 
+  // Cache match count so countFocusMatches() can avoid re-scanning the DOM.
+  tab.focusMatchCount = matchIdxs.length;
+
   updateFilterBtn(tab);
 }
 
 function countFocusMatches() {
-  let matchCount = 0;
-  let totalCount = 0;
-  if (focusState.active) {
-    for (const pg of panelGroups) {
-      for (const tab of pg.tabs) {
-        for (const entry of tab.logEl.querySelectorAll('.log-entry')) {
-          totalCount++;
-          const text = entry.querySelector('.log-body')?.textContent ?? entry.textContent;
-          if (lineMatchesFocus(text)) matchCount++;
-        }
-      }
+  if (!focusState.active) return;
+  let matchCount = 0, totalCount = 0;
+  for (const pg of panelGroups) {
+    for (const tab of pg.tabs) {
+      matchCount += tab.focusMatchCount;
+      totalCount += tab.lineCount;
     }
-    updateFocusCount(matchCount, totalCount);
   }
+  updateFocusCount(matchCount, totalCount);
 }
 
 export function applyFocusToAll() {
@@ -868,6 +867,7 @@ export function openPanel(group, ns, pod, container, _onClose) {
     id: tabId, group, ns, pod, container,
     el, logEl, wrapEl, crosshairEl, footerEl, filterBtn,
     lineCount: 0, lastTs: null, filters: [], hasLevel: false,
+    focusMatchCount: 0,
   };
 
   pg.tabs.push(tab);
@@ -938,6 +938,7 @@ export function appendLines(messages) {
     } else if (matches) {
       applyHighlight(entry, highlightRe);
     }
+    if (matches) tab.focusMatchCount++;
 
     tabBatches.get(tab.id).entries.push({ entry, ts });
   }
