@@ -101,12 +101,13 @@ function applyFilters(tab) {
 // ── Merged view helpers ───────────────────────────────────────────────────────
 
 function applyMergedFilters(pg) {
-  for (const entry of pg.mergedLogEl.querySelectorAll('.log-entry')) {
-    const srcTab = pg.tabs.find(t => t.id === +entry.dataset.srcTabId);
-    if (!srcTab) { entry.style.display = 'none'; continue; }
-    const bodyEl = entry.querySelector('.log-body');
-    const text = bodyEl ? bodyEl.textContent : entry.textContent;
-    entry.style.display = lineVisible(srcTab.filters, text) ? '' : 'none';
+  const tabById = new Map(pg.tabs.map(t => [t.id, t]));
+  for (const { el, tabId } of pg.mergedEntries) {
+    const srcTab = tabById.get(tabId);
+    if (!srcTab) { el.style.display = 'none'; continue; }
+    const bodyEl = el.querySelector('.log-body');
+    const text = bodyEl ? bodyEl.textContent : '';
+    el.style.display = lineVisible(srcTab.filters, text) ? '' : 'none';
   }
 }
 
@@ -131,10 +132,10 @@ function rebuildMergedView(pg) {
   const mergedLogEl = pg.mergedLogEl;
   mergedLogEl.innerHTML = '';
 
-  // Collect entries with source tab reference
+  // Collect entries; logEl.children avoids allocating a filtered NodeList.
   const all = [];
   for (const tab of pg.tabs) {
-    for (const entry of tab.logEl.querySelectorAll('.log-entry')) {
+    for (const entry of tab.logEl.children) {
       all.push({ ts: entry.dataset.ts || '', tab, entry });
     }
   }
@@ -152,12 +153,46 @@ function rebuildMergedView(pg) {
   for (const { ts, tab, entry } of all) {
     const clone = makeMergedEntry(tab, entry);
     frag.appendChild(clone);
-    pg.mergedEntries.push({ ts, el: clone });
+    pg.mergedEntries.push({ ts, el: clone, tabId: tab.id });
   }
   mergedLogEl.appendChild(frag);
 
   pg.mergedEl.querySelector('.panel-footer').textContent = `${all.length.toLocaleString()} lines (merged)`;
   mergedLogEl.scrollTop = mergedLogEl.scrollHeight;
+}
+
+// Merge-sort srcEntries (DOM elements from tab.logEl, already in chronological
+// order) into the existing sorted pg.mergedEntries without a full rebuild.
+// Used by prependLines to insert historical data while merged view is live.
+function mergeIntoMergedView(pg, tab, srcEntries) {
+  const mergedLogEl = pg.mergedLogEl;
+  const wasAtBottom = mergedLogEl.scrollHeight - mergedLogEl.scrollTop - mergedLogEl.clientHeight < 40;
+
+  const newItems = srcEntries.map(e => ({
+    ts: e.dataset.ts || '', el: makeMergedEntry(tab, e), tabId: tab.id,
+  }));
+
+  // Two-pointer merge of two sorted arrays (no-ts entries sort to the end).
+  const existing = pg.mergedEntries;
+  const merged = [];
+  let ei = 0, ni = 0;
+  while (ei < existing.length && ni < newItems.length) {
+    const ets = existing[ei].ts, nts = newItems[ni].ts;
+    const takeExisting = !ets ? false : !nts ? true : ets <= nts;
+    merged.push(takeExisting ? existing[ei++] : newItems[ni++]);
+  }
+  while (ei < existing.length) merged.push(existing[ei++]);
+  while (ni < newItems.length) merged.push(newItems[ni++]);
+
+  // Move all elements into a fragment (detaches existing from mergedLogEl),
+  // then replace children in one DOM mutation.
+  const frag = document.createDocumentFragment();
+  for (const item of merged) frag.appendChild(item.el);
+  mergedLogEl.replaceChildren(frag);
+
+  pg.mergedEntries = merged;
+  if (wasAtBottom) mergedLogEl.scrollTop = mergedLogEl.scrollHeight;
+  pg.mergedEl.querySelector('.panel-footer').textContent = `${merged.length.toLocaleString()} lines (merged)`;
 }
 
 function appendToMergedView(pg, tab, ts, srcEntry) {
@@ -167,7 +202,7 @@ function appendToMergedView(pg, tab, ts, srcEntry) {
 
   if (!ts) {
     mergedLogEl.appendChild(clone);
-    pg.mergedEntries.push({ ts: '', el: clone });
+    pg.mergedEntries.push({ ts: '', el: clone, tabId: tab.id });
   } else {
     // Binary-search the JS array — no DOM query needed.
     const arr = pg.mergedEntries;
@@ -178,7 +213,7 @@ function appendToMergedView(pg, tab, ts, srcEntry) {
       else hi = mid;
     }
     mergedLogEl.insertBefore(clone, arr[lo]?.el ?? null);
-    arr.splice(lo, 0, { ts, el: clone });
+    arr.splice(lo, 0, { ts, el: clone, tabId: tab.id });
   }
 
   if (wasAtBottom) mergedLogEl.scrollTop = mergedLogEl.scrollHeight;
@@ -746,7 +781,16 @@ function removeTab(groupId, tabId) {
       for (const t of pg.tabs) t.el.classList.toggle('tab-inactive', pg.merged || t.id !== pg.activeTabId);
     }
     renderGroupTabBar(pg);
-    if (pg.merged) rebuildMergedView(pg);
+    if (pg.merged) {
+      // Remove only the closed tab's entries; no need for a full rebuild.
+      const removedId = tabId;
+      pg.mergedEntries = pg.mergedEntries.filter(e => {
+        if (e.tabId === removedId) { e.el.remove(); return false; }
+        return true;
+      });
+      pg.mergedEl.querySelector('.panel-footer').textContent =
+        `${pg.mergedEntries.length.toLocaleString()} lines (merged)`;
+    }
   }
   notifyStateChanged();
 }
@@ -980,11 +1024,13 @@ export function prependLines(group, ns, pod, container, lines) {
   const { tab, pg } = result;
   const { logEl } = tab;
 
+  // Keep element references so we can pass them to mergeIntoMergedView below.
+  const builtEntries = [];
   const frag = document.createDocumentFragment();
-
   for (const line of lines) {
     const entry = buildLogEntry(line.ts || '', line.message || '', line.fields || null, line.level || '');
     frag.appendChild(entry);
+    builtEntries.push(entry);
   }
 
   if (!tab.hasLevel && lines.some(l => l.level && l.level !== 'OTHER')) {
@@ -994,8 +1040,10 @@ export function prependLines(group, ns, pod, container, lines) {
 
   logEl.insertBefore(frag, logEl.firstChild);
   tab.lineCount += lines.length;
+  let prunedCount = 0;
   if (tab.lineCount > MAX_LINES) {
-    pruneLines(logEl, tab.lineCount - PRUNE_TO);
+    prunedCount = tab.lineCount - PRUNE_TO;
+    pruneLines(logEl, prunedCount);
     tab.lineCount = PRUNE_TO;
   }
 
@@ -1010,7 +1058,15 @@ export function prependLines(group, ns, pod, container, lines) {
   }
   updateFooter(tab);
   applyPanelFocus(tab);
-  if (pg.merged) rebuildMergedView(pg);
+  if (pg.merged) {
+    if (prunedCount > 0) {
+      // Pruning removed some prepended entries from logEl; fall back to full
+      // rebuild rather than trying to reconcile which clones to discard.
+      rebuildMergedView(pg);
+    } else {
+      mergeIntoMergedView(pg, tab, builtEntries);
+    }
+  }
 }
 
 // ── State serialization ───────────────────────────────────────────────────────
