@@ -148,8 +148,11 @@ function rebuildMergedView(pg) {
   });
 
   const frag = document.createDocumentFragment();
-  for (const { tab, entry } of all) {
-    frag.appendChild(makeMergedEntry(tab, entry));
+  pg.mergedEntries = [];
+  for (const { ts, tab, entry } of all) {
+    const clone = makeMergedEntry(tab, entry);
+    frag.appendChild(clone);
+    pg.mergedEntries.push({ ts, el: clone });
   }
   mergedLogEl.appendChild(frag);
 
@@ -164,22 +167,24 @@ function appendToMergedView(pg, tab, ts, srcEntry) {
 
   if (!ts) {
     mergedLogEl.appendChild(clone);
+    pg.mergedEntries.push({ ts: '', el: clone });
   } else {
-    // Binary-search for insertion point to maintain timestamp order
-    const entries = mergedLogEl.querySelectorAll('.log-entry');
-    let lo = 0, hi = entries.length;
+    // Binary-search the JS array — no DOM query needed.
+    const arr = pg.mergedEntries;
+    let lo = 0, hi = arr.length;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
-      if ((entries[mid].dataset.ts || '') <= ts) lo = mid + 1;
+      if ((arr[mid].ts || '') <= ts) lo = mid + 1;
       else hi = mid;
     }
-    mergedLogEl.insertBefore(clone, entries[lo] ?? null);
+    mergedLogEl.insertBefore(clone, arr[lo]?.el ?? null);
+    arr.splice(lo, 0, { ts, el: clone });
   }
 
   if (wasAtBottom) mergedLogEl.scrollTop = mergedLogEl.scrollHeight;
 
-  const total = mergedLogEl.querySelectorAll('.log-entry').length;
-  pg.mergedEl.querySelector('.panel-footer').textContent = `${total.toLocaleString()} lines (merged)`;
+  pg.mergedEl.querySelector('.panel-footer').textContent =
+    `${pg.mergedEntries.length.toLocaleString()} lines (merged)`;
 }
 
 export function toggleMergedView(pgId, activateTabId = null) {
@@ -681,7 +686,7 @@ export function addPanelGroup() {
   // Clicking anywhere in this panel group focuses it
   el.addEventListener('mousedown', () => focusGroup(pgId));
 
-  const pg = { id: pgId, el, activeTabId: null, tabs: [], merged: false, mergedEl: mergedPanelEl, mergedLogEl };
+  const pg = { id: pgId, el, activeTabId: null, tabs: [], merged: false, mergedEl: mergedPanelEl, mergedLogEl, mergedEntries: [] };
   panelGroups.push(pg);
   document.getElementById('panels-container').appendChild(el);
   focusGroup(pgId);
