@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { saveState, loadState } from './state.js';
 
-// saveState calls history.replaceState(null, '', '#v1:...').
+// saveState calls history.replaceState(null, '', '#v2:...').
 // loadState reads location.hash which browsers expose with the leading '#'.
 let mockHash = '';
 globalThis.location = { get hash() { return mockHash; } };
@@ -28,12 +28,16 @@ test('loadState returns null when panels is not an array', () => {
   assert.equal(loadState(), null);
 });
 
-test('saveState / loadState round-trips panels and focus', () => {
-  const panels = [{ group: 'g', ns: 'default', pod: 'pod-1', container: 'c' }];
+test('saveState / loadState round-trips panelGroups and focus', () => {
+  const panelGroups = [{
+    merged: false,
+    activeTab: { group: 'g', ns: 'default', pod: 'pod-1', container: 'c' },
+    tabs: [{ group: 'g', ns: 'default', pod: 'pod-1', container: 'c', filters: [] }],
+  }];
   const focus = { active: false, pattern: '' };
-  saveState(panels, focus);
+  saveState(panelGroups, focus);
   const result = loadState();
-  assert.deepEqual(result.panels, panels);
+  assert.deepEqual(result.panelGroups, panelGroups);
   assert.deepEqual(result.focus, focus);
 });
 
