@@ -3,6 +3,17 @@
 klogster is a GUI app written in Go that pulls logs from a Kubernetes cluster from a
 set of Pods given by a list of namespace, pod label selectors.
 
+![klogster demo showing three log panels with timestamped entries](web/static/screenshot.png)
+
+## Building and testing
+
+```
+make build      # compile the klogster binary
+make test       # run Go and JavaScript tests
+make test-go    # Go tests only
+make test-js    # JavaScript tests only (requires Node.js ≥ 18)
+```
+
 ## Command line
 
 ```
