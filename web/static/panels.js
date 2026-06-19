@@ -3,12 +3,17 @@ import { focusState, updateFocusCount, lineMatchesFocus, buildFocusHighlightRe }
 
 const MAX_LINES = 5000;
 const PRUNE_TO = 4000;
+const ROW_H = 22;    // estimated row height in pixels for virtual scroll
+const OVERSCAN = 8;  // extra rows rendered above/below the visible viewport
 
 // ── Data model ────────────────────────────────────────────────────────────────
 // panelGroups: array of { id, el, activeTabId, tabs: [tab, ...] }
 // tab: { id, group, ns, pod, container, el, logEl, wrapEl, crosshairEl,
-//         footerEl, filterBtn, lineCount, lastTs, filters, hasLevel,
-//         _scrollLocked, _cleanupScrollSync }
+//         footerEl, filterBtn, lineCount, lastTs, lastTsMs, filters, hasLevel,
+//         focusMatchCount, _cleanupScrollSync,
+//         lines: [{ts, tsMs, message, fields, level, text, visible, highlight}],
+//         visList: [lineIndex], topSpEl, botSpEl,
+//         _renderRafId, _lastRenderStart, _lastRenderEnd }
 
 const panelGroups = [];
 let nextPanelGroupId = 1;
@@ -86,14 +91,20 @@ function clearHighlight(entry) {
   }
 }
 
-function applyFilters(tab) {
-  for (const entry of tab.logEl.querySelectorAll('.log-entry')) {
-    const bodyEl = entry.querySelector('.log-body');
-    const text = bodyEl ? bodyEl.textContent : entry.textContent;
-    entry.style.display = lineVisible(tab.filters, text) ? '' : 'none';
+// Returns the text content of a log line without building DOM elements.
+// Matches what bodyEl.textContent would produce in buildLogEntry.
+function getLineText(message, fields) {
+  let t = message || '';
+  if (fields) {
+    for (const key of Object.keys(fields).sort()) t += `${key}: ${fields[key]}`;
   }
+  return t;
+}
+
+function applyFilters(tab) {
+  recomputeVisibility(tab);
+  renderWindow(tab, true);
   updateFilterBtn(tab);
-  // Propagate to merged view if this tab's group is currently merged
   const pg = panelGroups.find(g => g.tabs.includes(tab));
   if (pg && pg.merged) applyMergedFilters(pg);
 }
@@ -111,32 +122,28 @@ function applyMergedFilters(pg) {
   }
 }
 
-function makeMergedEntry(tab, srcEntry) {
-  const clone = srcEntry.cloneNode(true);
-  clone.dataset.srcTabId = tab.id;
+function makeMergedEntry(tab, line) {
+  const entry = buildLogEntry(line.ts, line.message, line.fields, line.level);
+  entry.dataset.srcTabId = tab.id;
 
   const srcLabel = document.createElement('span');
   srcLabel.className = 'log-source';
   srcLabel.textContent = `${tab.pod}/${tab.container}`;
-  clone.insertBefore(srcLabel, clone.querySelector('.log-body'));
+  entry.insertBefore(srcLabel, entry.querySelector('.log-body'));
 
-  // Recompute visibility from source tab's filters (ignore focus-based display from source)
-  const bodyEl = clone.querySelector('.log-body');
-  const text = bodyEl ? bodyEl.textContent : '';
-  clone.style.display = lineVisible(tab.filters, text) ? '' : 'none';
-
-  return clone;
+  entry.style.display = lineVisible(tab.filters, line.text) ? '' : 'none';
+  return entry;
 }
 
 function rebuildMergedView(pg) {
   const mergedLogEl = pg.mergedLogEl;
   mergedLogEl.innerHTML = '';
 
-  // Collect entries; logEl.children avoids allocating a filtered NodeList.
+  // Collect all lines from the data model; no DOM traversal needed.
   const all = [];
   for (const tab of pg.tabs) {
-    for (const entry of tab.logEl.children) {
-      all.push({ ts: entry.dataset.ts || '', tab, entry });
+    for (const line of tab.lines) {
+      all.push({ ts: line.ts, tab, line });
     }
   }
 
@@ -150,10 +157,10 @@ function rebuildMergedView(pg) {
 
   const frag = document.createDocumentFragment();
   pg.mergedEntries = [];
-  for (const { ts, tab, entry } of all) {
-    const clone = makeMergedEntry(tab, entry);
-    frag.appendChild(clone);
-    pg.mergedEntries.push({ ts, el: clone, tabId: tab.id });
+  for (const { ts, tab, line } of all) {
+    const el = makeMergedEntry(tab, line);
+    frag.appendChild(el);
+    pg.mergedEntries.push({ ts, el, tabId: tab.id });
   }
   mergedLogEl.appendChild(frag);
 
@@ -161,15 +168,15 @@ function rebuildMergedView(pg) {
   mergedLogEl.scrollTop = mergedLogEl.scrollHeight;
 }
 
-// Merge-sort srcEntries (DOM elements from tab.logEl, already in chronological
-// order) into the existing sorted pg.mergedEntries without a full rebuild.
+// Merge-sort srcLines (data model line objects, already in chronological order)
+// into the existing sorted pg.mergedEntries without a full rebuild.
 // Used by prependLines to insert historical data while merged view is live.
-function mergeIntoMergedView(pg, tab, srcEntries) {
+function mergeIntoMergedView(pg, tab, srcLines) {
   const mergedLogEl = pg.mergedLogEl;
   const wasAtBottom = mergedLogEl.scrollHeight - mergedLogEl.scrollTop - mergedLogEl.clientHeight < 40;
 
-  const newItems = srcEntries.map(e => ({
-    ts: e.dataset.ts || '', el: makeMergedEntry(tab, e), tabId: tab.id,
+  const newItems = srcLines.map(line => ({
+    ts: line.ts, el: makeMergedEntry(tab, line), tabId: tab.id,
   }));
 
   // Two-pointer merge of two sorted arrays (no-ts entries sort to the end).
@@ -195,8 +202,9 @@ function mergeIntoMergedView(pg, tab, srcEntries) {
   pg.mergedEl.querySelector('.panel-footer').textContent = `${merged.length.toLocaleString()} lines (merged)`;
 }
 
-function appendToMergedView(pg, tab, ts, srcEntry) {
-  const clone = makeMergedEntry(tab, srcEntry);
+function appendToMergedView(pg, tab, line) {
+  const clone = makeMergedEntry(tab, line);
+  const ts = line.ts;
   const mergedLogEl = pg.mergedLogEl;
   const wasAtBottom = mergedLogEl.scrollHeight - mergedLogEl.scrollTop - mergedLogEl.clientHeight < 40;
 
@@ -244,79 +252,156 @@ export function toggleMergedView(pgId, activateTabId = null) {
   notifyStateChanged();
 }
 
-function applyPanelFocus(tab) {
-  const entries = [...tab.logEl.querySelectorAll('.log-entry')];
+// Recompute line.visible and line.highlight for every line in tab.lines,
+// then rebuild tab.visList (indices of visible lines). Operates entirely on
+// the data model — no DOM reads. Call renderWindow(tab, true) afterward to
+// push the new visibility state to the screen.
+function recomputeVisibility(tab) {
+  const { lines, filters } = tab;
 
   if (!focusState.active) {
+    for (const line of lines) {
+      line.visible = lineVisible(filters, line.text);
+      line.highlight = false;
+    }
     tab.focusMatchCount = 0;
-    for (const entry of entries) clearHighlight(entry);
-    applyFilters(tab);
+  } else {
+    const matchIdxs = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (lineMatchesFocus(lines[i].text)) matchIdxs.push(i);
+    }
+    tab.focusMatchCount = matchIdxs.length;
+
+    const visInFocus = new Set();
+    const { contextType, contextAmount, contextDirection } = focusState;
+    const before = contextDirection !== 'after'  ? contextAmount : 0;
+    const after  = contextDirection !== 'before' ? contextAmount : 0;
+
+    if (contextType === 'line') {
+      for (const idx of matchIdxs) {
+        for (let i = Math.max(0, idx - before); i <= Math.min(lines.length - 1, idx + after); i++)
+          visInFocus.add(i);
+      }
+    } else {
+      const beforeMs = before * 1000, afterMs = after * 1000;
+      for (const idx of matchIdxs) {
+        visInFocus.add(idx);
+        const anchor = lines[idx].tsMs;
+        if (!anchor) continue;
+
+        const loTs = anchor - beforeMs;
+        let left = 0, right = idx;
+        while (left < right) {
+          const mid = (left + right) >> 1;
+          if (lines[mid].tsMs < loTs) left = mid + 1; else right = mid;
+        }
+
+        const hiTs = anchor + afterMs;
+        let rLeft = idx, rRight = lines.length - 1;
+        while (rLeft < rRight) {
+          const mid = (rLeft + rRight + 1) >> 1;
+          if (lines[mid].tsMs > hiTs) rRight = mid - 1; else rLeft = mid;
+        }
+
+        for (let i = left; i <= rLeft; i++) visInFocus.add(i);
+      }
+    }
+
+    const matchSet = new Set(matchIdxs);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      line.visible = visInFocus.has(i) && lineVisible(filters, line.text);
+      line.highlight = matchSet.has(i);
+    }
+  }
+
+  tab.visList = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].visible) tab.visList.push(i);
+  }
+}
+
+function scheduleRender(tab) {
+  if (tab._renderRafId) return;
+  tab._renderRafId = requestAnimationFrame(() => {
+    tab._renderRafId = null;
+    renderWindow(tab);
+  });
+}
+
+// Render only the slice of visList visible in the current scroll viewport plus
+// OVERSCAN rows of buffer. Uses incremental DOM updates (add/remove at edges)
+// on scroll; falls back to full replacement when force=true or the window
+// jumps (filter change, focus change, large scroll).
+function renderWindow(tab, force = false) {
+  const { logEl, visList, lines, topSpEl, botSpEl } = tab;
+  const n = visList.length;
+
+  if (n === 0) {
+    if (tab._lastRenderEnd !== 0) {
+      topSpEl.style.height = '0';
+      botSpEl.style.height = '0';
+      let next = topSpEl.nextSibling;
+      while (next && next !== botSpEl) { const tmp = next.nextSibling; next.remove(); next = tmp; }
+      tab._lastRenderStart = 0;
+      tab._lastRenderEnd = 0;
+    }
     return;
   }
 
-  const matchIdxs = [];
-  entries.forEach((entry, i) => {
-    const text = entry.querySelector('.log-body')?.textContent ?? entry.textContent;
-    if (lineMatchesFocus(text)) matchIdxs.push(i);
-  });
-  const matchSet = new Set(matchIdxs);
+  const scrollTop = logEl.scrollTop;
+  const viewH = logEl.clientHeight || 300;
 
-  const visible = new Set();
-  const { contextType, contextAmount, contextDirection } = focusState;
+  const newStart = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
+  const newEnd   = Math.min(n, Math.ceil((scrollTop + viewH) / ROW_H) + OVERSCAN);
 
-  if (contextType === 'line') {
-    const before = contextDirection !== 'after'  ? contextAmount : 0;
-    const after  = contextDirection !== 'before' ? contextAmount : 0;
-    for (const idx of matchIdxs) {
-      for (let i = Math.max(0, idx - before); i <= Math.min(entries.length - 1, idx + after); i++)
-        visible.add(i);
-    }
+  const oldStart = tab._lastRenderStart;
+  const oldEnd   = tab._lastRenderEnd;
+
+  if (!force && newStart === oldStart && newEnd === oldEnd) return;
+
+  topSpEl.style.height = `${newStart * ROW_H}px`;
+  botSpEl.style.height = `${(n - newEnd) * ROW_H}px`;
+
+  const highlightRe = focusState.active ? buildFocusHighlightRe() : null;
+  function makeEntry(vi) {
+    const line = lines[visList[vi]];
+    const entry = buildLogEntry(line.ts, line.message, line.fields, line.level);
+    if (line.highlight && highlightRe) applyHighlight(entry, highlightRe);
+    return entry;
+  }
+
+  if (force || oldStart < 0 || newStart >= oldEnd || newEnd <= oldStart) {
+    // Full replacement
+    let next = topSpEl.nextSibling;
+    while (next && next !== botSpEl) { const tmp = next.nextSibling; next.remove(); next = tmp; }
+    const frag = document.createDocumentFragment();
+    for (let vi = newStart; vi < newEnd; vi++) frag.appendChild(makeEntry(vi));
+    logEl.insertBefore(frag, botSpEl);
   } else {
-    // Parse timestamps once (O(n)) rather than re-parsing for every match (was O(n×m)).
-    const timestamps = entries.map(e => e.dataset.ts ? new Date(e.dataset.ts).getTime() : 0);
-    const before = contextDirection !== 'after'  ? contextAmount * 1000 : 0;
-    const after  = contextDirection !== 'before' ? contextAmount * 1000 : 0;
+    // Incremental: remove scrolled-out rows, then add newly-visible rows
+    for (let vi = oldStart; vi < Math.min(newStart, oldEnd); vi++) topSpEl.nextSibling?.remove();
+    for (let vi = Math.max(newEnd, oldStart); vi < oldEnd; vi++) botSpEl.previousSibling?.remove();
 
-    for (const idx of matchIdxs) {
-      visible.add(idx);
-      const anchor = timestamps[idx];
-      if (!anchor) continue;
-
-      // Binary search for the first entry inside the window (O(log n) per match).
-      const lo = anchor - before;
-      let left = 0, right = idx;
-      while (left < right) {
-        const mid = (left + right) >> 1;
-        if (timestamps[mid] < lo) left = mid + 1; else right = mid;
-      }
-
-      const hi = anchor + after;
-      let rLeft = idx, rRight = entries.length - 1;
-      while (rLeft < rRight) {
-        const mid = (rLeft + rRight + 1) >> 1;
-        if (timestamps[mid] > hi) rRight = mid - 1; else rLeft = mid;
-      }
-
-      for (let i = left; i <= rLeft; i++) visible.add(i);
+    if (newStart < oldStart) {
+      const frag = document.createDocumentFragment();
+      for (let vi = newStart; vi < Math.min(oldStart, newEnd); vi++) frag.appendChild(makeEntry(vi));
+      logEl.insertBefore(frag, topSpEl.nextSibling);
+    }
+    if (newEnd > oldEnd) {
+      const frag = document.createDocumentFragment();
+      for (let vi = Math.max(newStart, oldEnd); vi < newEnd; vi++) frag.appendChild(makeEntry(vi));
+      logEl.insertBefore(frag, botSpEl);
     }
   }
 
-  const highlightRe = buildFocusHighlightRe();
+  tab._lastRenderStart = newStart;
+  tab._lastRenderEnd   = newEnd;
+}
 
-  entries.forEach((entry, i) => {
-    const text = entry.querySelector('.log-body')?.textContent ?? entry.textContent;
-    const show = visible.has(i) && lineVisible(tab.filters, text);
-    entry.style.display = show ? '' : 'none';
-    if (show && matchSet.has(i)) {
-      applyHighlight(entry, highlightRe);
-    } else {
-      clearHighlight(entry);
-    }
-  });
-
-  // Cache match count so countFocusMatches() can avoid re-scanning the DOM.
-  tab.focusMatchCount = matchIdxs.length;
-
+function applyPanelFocus(tab) {
+  recomputeVisibility(tab);
+  renderWindow(tab, true);
   updateFilterBtn(tab);
 }
 
@@ -528,9 +613,19 @@ function buildLogEntry(ts, message, fields, level) {
   return entry;
 }
 
-function pruneLines(logEl, toRemove) {
-  for (let i = 0; i < toRemove; i++) {
-    logEl.firstElementChild.remove();
+function pruneTab(tab, toRemove) {
+  tab.lines.splice(0, toRemove);
+  // Shift visList indices and drop any that fell below zero
+  const newVis = [];
+  for (const idx of tab.visList) {
+    const shifted = idx - toRemove;
+    if (shifted >= 0) newVis.push(shifted);
+  }
+  tab.visList = newVis;
+  tab._lastRenderStart = -1; // force full re-render
+  tab._lastRenderEnd   = -1;
+  if (focusState.active) {
+    tab.focusMatchCount = tab.lines.filter(l => l.highlight).length;
   }
 }
 
@@ -891,6 +986,16 @@ export function openPanel(group, ns, pod, container, _onClose) {
     lockBtn.textContent = logEl._scrollLocked ? '⟷ sync' : '⟷ free';
   });
 
+  // Virtual scroll spacers — content sits between them in the DOM
+  const topSpEl = document.createElement('div');
+  topSpEl.className = 'vs-spacer';
+  topSpEl.style.height = '0';
+  const botSpEl = document.createElement('div');
+  botSpEl.className = 'vs-spacer';
+  botSpEl.style.height = '0';
+  logEl.appendChild(topSpEl);
+  logEl.appendChild(botSpEl);
+
   const crosshairEl = document.createElement('div');
   crosshairEl.className = 'ts-crosshair';
 
@@ -912,6 +1017,8 @@ export function openPanel(group, ns, pod, container, _onClose) {
     el, logEl, wrapEl, crosshairEl, footerEl, filterBtn,
     lineCount: 0, lastTs: null, lastTsMs: 0, filters: [], hasLevel: false,
     focusMatchCount: 0,
+    lines: [], visList: [], topSpEl, botSpEl,
+    _renderRafId: null, _lastRenderStart: -1, _lastRenderEnd: -1,
   };
 
   pg.tabs.push(tab);
@@ -920,6 +1027,28 @@ export function openPanel(group, ns, pod, container, _onClose) {
   filterBtn.addEventListener('click', () => openFilterDialog(tab));
 
   tab._cleanupScrollSync = attachScrollSync(logEl, getActiveTabLogEls, () => logEl._scrollLocked);
+
+  // Schedule a virtual-scroll re-render on user scroll (programmatic scrolls
+  // call renderWindow directly and are suppressed here via _programmaticScroll).
+  logEl.addEventListener('scroll', () => {
+    if (!logEl._programmaticScroll) scheduleRender(tab);
+  }, { passive: true });
+
+  // Expose a method for scroll-sync to jump to a target timestamp without
+  // needing a DOM span — binary-searches the visible line index array.
+  logEl._scrollToTs = targetTs => {
+    const { visList, lines } = tab;
+    if (!visList.length) return;
+    let lo = 0, hi = visList.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if ((lines[visList[mid]].ts || '') < targetTs) lo = mid + 1; else hi = mid;
+    }
+    const visIdx = Math.min(lo, visList.length - 1);
+    logEl._programmaticScroll = true;
+    logEl.scrollTop = visIdx * ROW_H;
+    renderWindow(tab);
+  };
 
   logEl.addEventListener('mouseover', e => {
     const line = e.target.closest('.log-entry[data-ts]');
@@ -950,121 +1079,122 @@ export function closePanel(id) {
 // ── Log line ingestion ────────────────────────────────────────────────────────
 
 // Accepts a batch of {group, ns, pod, container, ts, message, fields, level}
-// objects. Groups by tab so each tab gets one DocumentFragment append, one
-// scroll-position read, one footer update, and one prune check per call.
+// objects. Pushes into the data model, updates visList incrementally, then
+// triggers a virtual-scroll render for the active tab.
 export function appendLines(messages) {
-  const highlightRe = focusState.active ? buildFocusHighlightRe() : null;
-
-  // Build per-tab batches in a single pass over the message list.
   const tabBatches = new Map();
   for (const msg of messages) {
     const result = getTabByKey(msg.group, msg.ns, msg.pod, msg.container);
     if (!result) continue;
     const { tab, pg } = result;
-    if (!tabBatches.has(tab.id)) tabBatches.set(tab.id, { tab, pg, entries: [] });
+    if (!tabBatches.has(tab.id)) tabBatches.set(tab.id, { tab, pg, lines: [] });
 
     const ts = msg.ts || '';
+    const tsMs = ts ? new Date(ts).getTime() : 0;
+    const message = msg.message || '';
+    const fields = msg.fields || null;
     const level = msg.level || '';
-    const entry = buildLogEntry(ts, msg.message || '', msg.fields || null, level);
+    const text = getLineText(message, fields);
+    const panelVis = lineVisible(tab.filters, text);
+    const matches = focusState.active && lineMatchesFocus(text);
+    const visible = panelVis && (!focusState.active || matches);
 
     if (!tab.hasLevel && level && level !== 'OTHER') {
       tab.hasLevel = true;
       tab.el.classList.add('has-level');
     }
-
-    const bodyEl = entry.querySelector('.log-body');
-    const text = bodyEl ? bodyEl.textContent : msg.message || '';
-    const panelVisible = lineVisible(tab.filters, text);
-    const matches = focusState.active && lineMatchesFocus(text);
-    const focusVisible = !focusState.active || matches;
-    if (!panelVisible || !focusVisible) {
-      entry.style.display = 'none';
-    } else if (matches) {
-      applyHighlight(entry, highlightRe);
-    }
     if (matches) tab.focusMatchCount++;
 
-    tabBatches.get(tab.id).entries.push({ entry, ts });
+    tabBatches.get(tab.id).lines.push({ ts, tsMs, message, fields, level, text, visible, highlight: matches });
   }
 
-  for (const { tab, pg, entries } of tabBatches.values()) {
+  for (const { tab, pg, lines } of tabBatches.values()) {
     const { logEl } = tab;
     const isActive = pg.activeTabId === tab.id && !pg.merged;
-    // Read scroll position once before appending to avoid per-line reflows.
-    const atBottom = isActive
-      ? logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40
-      : true;
+    const viewH = logEl.clientHeight || 300;
+    const atBottom = !isActive || logEl.scrollTop >= tab.visList.length * ROW_H - viewH - 40;
 
-    const frag = document.createDocumentFragment();
-    for (const { entry, ts } of entries) {
-      frag.appendChild(entry);
+    for (const line of lines) {
+      tab.lines.push(line);
+      if (line.visible) tab.visList.push(tab.lines.length - 1);
       tab.lineCount++;
-      if (ts) { tab.lastTs = ts; tab.lastTsMs = new Date(ts).getTime(); }
+      if (line.ts) { tab.lastTs = line.ts; tab.lastTsMs = line.tsMs; }
     }
-    logEl.appendChild(frag); // single DOM mutation for the whole batch
 
     updateFooter(tab);
 
     if (tab.lineCount > MAX_LINES) {
-      pruneLines(logEl, tab.lineCount - PRUNE_TO);
+      pruneTab(tab, tab.lineCount - PRUNE_TO);
       tab.lineCount = PRUNE_TO;
     }
 
-    if (isActive && atBottom) logEl.scrollTop = logEl.scrollHeight;
+    if (isActive) {
+      if (atBottom) {
+        const newN = tab.visList.length;
+        logEl._programmaticScroll = true;
+        logEl.scrollTop = Math.max(0, newN * ROW_H - viewH);
+        renderWindow(tab);
+      } else {
+        scheduleRender(tab);
+      }
+    }
 
     if (pg.merged) {
-      for (const { entry, ts } of entries) appendToMergedView(pg, tab, ts, entry);
+      for (const line of lines) appendToMergedView(pg, tab, line);
     }
   }
 }
 
-export function prependLines(group, ns, pod, container, lines) {
+export function prependLines(group, ns, pod, container, msgLines) {
   const result = getTabByKey(group, ns, pod, container);
-  if (!result || !lines.length) return;
+  if (!result || !msgLines.length) return;
   const { tab, pg } = result;
-  const { logEl } = tab;
 
-  // Keep element references so we can pass them to mergeIntoMergedView below.
-  const builtEntries = [];
-  const frag = document.createDocumentFragment();
-  for (const line of lines) {
-    const entry = buildLogEntry(line.ts || '', line.message || '', line.fields || null, line.level || '');
-    frag.appendChild(entry);
-    builtEntries.push(entry);
-  }
+  const newLines = msgLines.map(l => {
+    const ts = l.ts || '';
+    const tsMs = ts ? new Date(ts).getTime() : 0;
+    const message = l.message || '';
+    const fields = l.fields || null;
+    const level = l.level || '';
+    const text = getLineText(message, fields);
+    return { ts, tsMs, message, fields, level, text, visible: true, highlight: false };
+  });
 
-  if (!tab.hasLevel && lines.some(l => l.level && l.level !== 'OTHER')) {
+  // Insert historical lines at the front of the data model
+  tab.lines.unshift(...newLines);
+
+  // Recompute visibility (handles both filters and focus; rebuilds visList)
+  recomputeVisibility(tab);
+
+  if (!tab.hasLevel && newLines.some(l => l.level && l.level !== 'OTHER')) {
     tab.hasLevel = true;
     tab.el.classList.add('has-level');
   }
 
-  logEl.insertBefore(frag, logEl.firstChild);
-  tab.lineCount += lines.length;
+  if (!tab.lastTs) {
+    for (let i = newLines.length - 1; i >= 0; i--) {
+      if (newLines[i].ts) { tab.lastTs = newLines[i].ts; tab.lastTsMs = newLines[i].tsMs; break; }
+    }
+  }
+
+  tab.lineCount = tab.lines.length;
   let prunedCount = 0;
   if (tab.lineCount > MAX_LINES) {
     prunedCount = tab.lineCount - PRUNE_TO;
-    pruneLines(logEl, prunedCount);
+    pruneTab(tab, prunedCount);
     tab.lineCount = PRUNE_TO;
   }
 
-  if (!tab.lastTs) {
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (lines[i].ts) {
-        tab.lastTs = lines[i].ts;
-        tab.lastTsMs = new Date(lines[i].ts).getTime();
-        break;
-      }
-    }
-  }
   updateFooter(tab);
-  applyPanelFocus(tab);
+  renderWindow(tab, true);
+
   if (pg.merged) {
     if (prunedCount > 0) {
-      // Pruning removed some prepended entries from logEl; fall back to full
-      // rebuild rather than trying to reconcile which clones to discard.
+      // Pruning removed some prepended lines; can't reconcile which merged
+      // clones to discard, so fall back to a full rebuild.
       rebuildMergedView(pg);
     } else {
-      mergeIntoMergedView(pg, tab, builtEntries);
+      mergeIntoMergedView(pg, tab, newLines);
     }
   }
 }
