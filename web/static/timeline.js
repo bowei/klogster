@@ -43,14 +43,7 @@ export function findClosestSpan(logEl, targetTs) {
   const n = children.length;
   if (!n) return null;
 
-  // Virtual-scroll containers have vs-spacer divs at index 0 and n-1.
-  // Skip them so the binary search operates only on the sorted log entries.
-  let start = 0, end = n;
-  if (children[0]?.classList?.contains('vs-spacer')) start = 1;
-  if (n > 1 && children[n - 1]?.classList?.contains('vs-spacer')) end = n - 1;
-  if (start >= end) return null;
-
-  let lo = start, hi = end;
+  let lo = 0, hi = n;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
     if ((children[mid].dataset.ts || '') < targetTs) lo = mid + 1;
@@ -58,7 +51,7 @@ export function findClosestSpan(logEl, targetTs) {
   }
 
   // lo is the first entry with ts >= targetTs; fall back to last if past end.
-  return children[lo] ?? children[end - 1];
+  return children[lo] ?? children[n - 1];
 }
 
 /**
@@ -129,15 +122,12 @@ export function attachScrollSync(logEl, getOtherLogs, isLocked) {
         for (const other of getOtherLogs()) {
           if (other === logEl) continue;
           if (!other._scrollLocked) continue;
-          if (other._scrollToTs) {
-            // Virtual-scroll panel: jump by data-model index, no DOM span needed.
-            other._scrollToTs(anchorTs);
-          } else {
-            const span = findClosestSpan(other, anchorTs);
-            if (span) {
-              other._programmaticScroll = true;
-              span.scrollIntoView({ block: 'start', behavior: 'instant' });
-            }
+          const span = findClosestSpan(other, anchorTs);
+          if (span) {
+            // Set the flag before scrollIntoView so the resulting scroll event
+            // is suppressed on the target panel and does not cascade back.
+            other._programmaticScroll = true;
+            span.scrollIntoView({ block: 'start', behavior: 'instant' });
           }
         }
       });
