@@ -147,11 +147,11 @@ tabs. Only the active tab's log is visible in its column; all other tabs
 continue streaming in the background and become visible when clicked.
 
 **Opening logs:**
-* Click **＋ Pod** to open the pod browser. Clicking a pod opens it as a new
-  tab in the currently focused column. If no columns are open, one is created
-  automatically.
+* Click **＋ Log** to open the log browser. Clicking a log source opens it as
+  a new tab in the currently focused column. If no columns are open, one is
+  created automatically.
 * Click **＋ Panel** to add a new empty column. The new column becomes the
-  focus target, so the next pod you click opens there.
+  focus target, so the next log source you click opens there.
 
 **Tabs:**
 * Click a tab to switch to it within its column.
@@ -173,8 +173,8 @@ focus state. Copy or bookmark the URL to restore the exact view on reload.
 ### Pause / Resume
 
 The **⏸** button (top-right) pauses log updates to all panels.
-While paused, the button turns amber and shows ▶ with a count of buffered lines.
-Clicking ▶ flushes the buffer and resumes live updates — no messages are dropped.
+While paused, the button turns amber and shows ▶; hovering shows the count of
+buffered lines. Clicking ▶ flushes the buffer and resumes live updates — no messages are dropped.
 
 ### Per-panel filters
 

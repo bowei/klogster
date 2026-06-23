@@ -244,15 +244,91 @@ export function toggleMergedView(pgId, activateTabId = null) {
   notifyStateChanged();
 }
 
+function formatDuration(ms) {
+  if (ms == null) return null;
+  if (ms < 1000) return `${ms}ms`;
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60), rem = s % 60;
+  if (m < 60) return rem > 0 ? `${m}m ${rem}s` : `${m}m`;
+  const h = Math.floor(m / 60), mrem = m % 60;
+  return mrem > 0 ? `${h}h ${mrem}m` : `${h}h`;
+}
+
+function buildGapElement(count, fromTs, toTs) {
+  const el = document.createElement('div');
+  el.className = 'log-gap';
+  if (fromTs) el.dataset.fromTs = fromTs;
+  const durMs = fromTs && toTs ? new Date(toTs).getTime() - new Date(fromTs).getTime() : null;
+  const dur = formatDuration(durMs > 0 ? durMs : null);
+  const lines = count === 1 ? '1 line skipped' : `${count} lines skipped`;
+  const span = document.createElement('span');
+  span.textContent = dur ? `(${dur}, ${lines})` : `(${lines})`;
+  el.appendChild(span);
+  return el;
+}
+
+function insertGapMarkers(logEl, entries, lastVisibleTs) {
+  let gapCount = 0, gapFromTs = lastVisibleTs ?? null;
+  for (const entry of entries) {
+    if (entry.style.display === 'none') {
+      gapCount++;
+    } else {
+      if (gapCount > 0) {
+        logEl.insertBefore(buildGapElement(gapCount, gapFromTs, entry.dataset.ts || null), entry);
+        gapCount = 0;
+      }
+      gapFromTs = entry.dataset.ts || gapFromTs;
+    }
+  }
+  if (gapCount > 0) logEl.appendChild(buildGapElement(gapCount, gapFromTs, null));
+}
+
+function reapplyTailGaps(logEl, newEntryEls) {
+  if (!newEntryEls.length) return;
+
+  // Walk back from just before the new batch to find the last visible entry (anchor).
+  let anchorEl = null;
+  let el = newEntryEls[0].previousElementSibling;
+  while (el) {
+    if (el.classList.contains('log-entry') && el.style.display !== 'none') {
+      anchorEl = el;
+      break;
+    }
+    el = el.previousElementSibling;
+  }
+
+  // Remove all gap markers from the anchor forward.
+  el = anchorEl ? anchorEl.nextElementSibling : logEl.firstElementChild;
+  while (el) {
+    const next = el.nextElementSibling;
+    if (el.classList.contains('log-gap')) el.remove();
+    el = next;
+  }
+
+  // Reinsert gaps from the anchor through end of logEl.
+  const startEl = anchorEl ? anchorEl.nextElementSibling : logEl.firstElementChild;
+  const tail = [];
+  el = startEl;
+  while (el) {
+    if (el.classList.contains('log-entry')) tail.push(el);
+    el = el.nextElementSibling;
+  }
+  insertGapMarkers(logEl, tail, anchorEl?.dataset?.ts ?? null);
+}
+
 function applyPanelFocus(tab) {
   const entries = [...tab.logEl.querySelectorAll('.log-entry')];
 
   if (!focusState.active) {
     tab.focusMatchCount = 0;
+    for (const gap of tab.logEl.querySelectorAll('.log-gap')) gap.remove();
     for (const entry of entries) clearHighlight(entry);
     applyFilters(tab);
     return;
   }
+
+  for (const gap of tab.logEl.querySelectorAll('.log-gap')) gap.remove();
 
   const matchIdxs = [];
   entries.forEach((entry, i) => {
@@ -316,6 +392,8 @@ function applyPanelFocus(tab) {
 
   // Cache match count so countFocusMatches() can avoid re-scanning the DOM.
   tab.focusMatchCount = matchIdxs.length;
+
+  insertGapMarkers(tab.logEl, entries, null);
 
   updateFilterBtn(tab);
 }
@@ -1002,6 +1080,8 @@ export function appendLines(messages) {
       if (ts) { tab.lastTs = ts; tab.lastTsMs = new Date(ts).getTime(); }
     }
     logEl.appendChild(frag); // single DOM mutation for the whole batch
+
+    if (focusState.active) reapplyTailGaps(logEl, entries.map(e => e.entry));
 
     updateFooter(tab);
 

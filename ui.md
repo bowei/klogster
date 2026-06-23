@@ -6,16 +6,16 @@
 A small colored circle in the header shows WebSocket state: gray while connecting, green when live, red on error. It reconnects automatically with exponential backoff up to 30-second intervals.
 
 ### Pause / Resume (⏸ / ▶)
-Pauses all live log updates across every panel. New lines arriving during the pause are buffered in memory; the button label shows the count of buffered lines. Clicking ▶ flushes the buffer and resumes tailing. Useful for reading a burst of activity without the log scrolling away.
+Pauses all live log updates across every panel. New lines arriving during the pause are buffered in memory; the button shows ▶ and hovering shows the count of buffered lines. Clicking ▶ flushes the buffer and resumes tailing. Useful for reading a burst of activity without the log scrolling away.
 
 ### Focus button
 Opens the focus dialog (see [Focus](#focus)). The button turns accent-colored when any focus pattern is active.
 
 ### + Panel button
-Creates a new empty panel column and makes it the active target for the next pod opened from the browser. See [Panel columns](#panel-columns).
+Creates a new empty panel column and makes it the active target for the next log source opened from the browser. See [Panel columns](#panel-columns).
 
-### + Pod button
-Toggles the pod browser sidebar (see [Pod Browser](#pod-browser)).
+### + Log button
+Toggles the log browser sidebar (see [Log Browser](#log-browser)).
 
 ### ⚙ Settings
 Opens the theme picker (see [Themes](#themes)).
@@ -25,12 +25,12 @@ Opens a keyboard shortcut and feature reference dialog. Pressing Escape closes i
 
 ---
 
-## Pod Browser
+## Log Browser
 
-A slide-in sidebar on the right listing every discovered pod organized by log group. Polls `/api/groups` every 10 seconds to stay current.
+A slide-in sidebar listing every discovered log source organized by log group. Polls `/api/groups` every 10 seconds to stay current.
 
-- Clicking a pod item opens it as a new tab in the currently focused panel column. If no columns exist, one is created automatically.
-- Pod items already open in any column are highlighted in the accent color.
+- Clicking a log source opens it as a new tab in the currently focused panel column. If no columns exist, one is created automatically.
+- Sources already open in any column are highlighted in the accent color.
 - On open, 500 lines of recent history are back-filled so the tab is not empty.
 - The ✕ button at the top of the sidebar closes it.
 
@@ -89,8 +89,8 @@ When a panel accumulates more than 5 000 lines, the oldest 1 000 are removed to 
 
 ## Scroll Synchronization
 
-### Sync / Free toggle (⟷)
-Each panel toolbar has a scroll-lock button. In **sync** mode (default) the panel participates in timestamp-aligned scrolling. In **free** mode it scrolls independently.
+### Sync / Free toggle (⟷ sync / ⟷ free)
+Each panel toolbar has a scroll-lock button. In **sync** mode (default, labeled **⟷ sync**) the panel participates in timestamp-aligned scrolling. In **free** mode (labeled **⟷ free**) it scrolls independently.
 
 ### Debounced cross-panel sync
 When a locked panel is scrolled, klogster waits for scrolling to stop (100 ms of inactivity) before syncing the other locked panels. This avoids continuous DOM updates while the user is rapidly scrolling. Once the pause is detected, the top-most visible timestamp in the source panel is found, and every other locked panel jumps to its nearest matching timestamp using binary search.
@@ -126,7 +126,22 @@ Matched text within visible lines is highlighted with a yellow background mark.
 ### Applied to new lines
 Lines arriving from the live stream are immediately filtered and highlighted according to the current focus state.
 
----
+### Lines omitted indicator
+
+When focus filtering is active, we want to show a summary for
+where the logs are filtered to give the user a sense of what
+has been omitted.
+
+When logs are filtered from being displayed, instead put a
+dashed line with the time duration and lines skipped as a
+a caption in place of the filtered lines:
+
+```
+2026-01-01 00:00:10.123 Log line ...
+----------------------- (10 seconds, 5 lines skipped) --
+2026-01-01 00:00:20.123 Log line ...
+2026-01-01 00:00:30.123 Log line ...
+```
 
 ## Per-Panel Filtering
 
