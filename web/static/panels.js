@@ -338,9 +338,11 @@ function applyPanelFocus(tab) {
   const matchSet = new Set(matchIdxs);
 
   const visible = new Set();
-  const { contextType, contextAmount, contextDirection } = focusState;
+  const { contextEnabled, contextType, contextAmount, contextDirection } = focusState;
 
-  if (contextType === 'line') {
+  if (!contextEnabled) {
+    for (const idx of matchIdxs) visible.add(idx);
+  } else if (contextType === 'line') {
     const before = contextDirection !== 'after'  ? contextAmount : 0;
     const after  = contextDirection !== 'before' ? contextAmount : 0;
     for (const idx of matchIdxs) {
@@ -428,7 +430,7 @@ function updateFilterBtn(tab) {
 
 let activeFilterDialog = null;
 
-function openFilterDialog(tab) {
+function openFilterDialog(tab, initialPattern = '') {
   const toolbar = tab.el.querySelector('.panel-toolbar');
 
   if (activeFilterDialog && activeFilterDialog._tabId === tab.id) {
@@ -553,7 +555,34 @@ function openFilterDialog(tab) {
   setTimeout(() => document.addEventListener('mousedown', onOutside, true), 0);
 
   renderList();
+  if (initialPattern) patInput.value = initialPattern;
   patInput.focus();
+}
+
+export function findTabContaining(el) {
+  const entry = el.closest?.('.log-entry');
+  if (entry?.dataset.srcTabId) {
+    for (const pg of panelGroups) {
+      const tab = pg.tabs.find(t => t.id === entry.dataset.srcTabId);
+      if (tab) return tab;
+    }
+  }
+  for (const pg of panelGroups) {
+    for (const tab of pg.tabs) {
+      if (tab.logEl.contains(el)) return tab;
+    }
+    if (pg.mergedLogEl?.contains(el)) return pg.tabs[0] ?? null;
+  }
+  return null;
+}
+
+export function openFilterDialogWithPattern(tab, pattern) {
+  if (activeFilterDialog && activeFilterDialog._tabId === tab.id) {
+    const input = activeFilterDialog.querySelector('.filter-pattern-input');
+    if (input) { input.value = pattern; input.focus(); }
+    return;
+  }
+  openFilterDialog(tab, pattern);
 }
 
 // ── Log entry building ────────────────────────────────────────────────────────

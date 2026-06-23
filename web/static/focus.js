@@ -2,6 +2,7 @@
 export const focusState = {
   active: false,
   patterns: [],   // [{pattern: string, re: RegExp|null}]
+  contextEnabled: false,
   contextType: 'line',
   contextAmount: 3,
   contextDirection: 'around',
@@ -36,7 +37,7 @@ export function buildFocusHighlightRe() {
   return new RegExp(valid.map(p => `(?:${p.pattern})`).join('|'), 'gi');
 }
 
-export function openFocusDialog(btn) {
+export function openFocusDialog(btn, initialPattern = '') {
   focusBtn = btn;
 
   if (activeFocusDialog) {
@@ -155,8 +156,15 @@ export function openFocusDialog(btn) {
   const ctxRow = document.createElement('div');
   ctxRow.className = 'focus-context-row';
 
-  const ctxLabel = document.createElement('span');
+  const ctxCheckbox = document.createElement('input');
+  ctxCheckbox.type = 'checkbox';
+  ctxCheckbox.className = 'focus-ctx-checkbox';
+  ctxCheckbox.id = 'focus-ctx-enabled';
+  ctxCheckbox.checked = focusState.contextEnabled;
+
+  const ctxLabel = document.createElement('label');
   ctxLabel.className = 'focus-ctx-label';
+  ctxLabel.htmlFor = 'focus-ctx-enabled';
   ctxLabel.textContent = 'Context';
 
   const typeSelect = document.createElement('select');
@@ -186,6 +194,22 @@ export function openFocusDialog(btn) {
   });
   dirSelect.value = focusState.contextDirection;
 
+  function updateCtxControls() {
+    const on = ctxCheckbox.checked;
+    typeSelect.disabled = !on;
+    amountInput.disabled = !on;
+    dirSelect.disabled = !on;
+  }
+  updateCtxControls();
+
+  ctxCheckbox.addEventListener('change', () => {
+    focusState.contextEnabled = ctxCheckbox.checked;
+    updateCtxControls();
+    if (focusState.active) notifyChanged();
+    updateStatus();
+  });
+
+  ctxRow.appendChild(ctxCheckbox);
   ctxRow.appendChild(ctxLabel);
   ctxRow.appendChild(typeSelect);
   ctxRow.appendChild(amountInput);
@@ -235,8 +259,19 @@ export function openFocusDialog(btn) {
   setTimeout(() => document.addEventListener('mousedown', onOutside, true), 0);
 
   renderList();
+  if (initialPattern) patInput.value = initialPattern;
   patInput.focus();
   updateStatus();
+}
+
+export function openFocusDialogWithPattern(pattern) {
+  if (activeFocusDialog) {
+    const input = activeFocusDialog.querySelector('.focus-pattern-input');
+    if (input) { input.value = pattern; input.focus(); }
+    return;
+  }
+  const btn = document.getElementById('btn-focus');
+  openFocusDialog(btn, pattern);
 }
 
 function positionDialog(anchor, dialog) {
@@ -256,6 +291,7 @@ export function updateFocusCount(matchCount, totalCount) {
 export function restoreFocusState(saved) {
   if (!saved) return;
   focusBtn = document.getElementById('btn-focus');
+  focusState.contextEnabled = Boolean(saved.contextEnabled);
   focusState.contextType = saved.contextType || 'line';
   focusState.contextAmount = saved.contextAmount ?? 3;
   focusState.contextDirection = saved.contextDirection || 'around';

@@ -111,7 +111,9 @@ Type a regexp in the input and click **Add** (or press Enter). Patterns are case
 Active patterns are listed with a × button to remove each individually. Removing the last pattern clears focus entirely.
 
 ### Context window
-Controls how many surrounding lines or seconds of log time are shown around each match:
+An optional window of surrounding lines or seconds shown around each match. The **Context** checkbox (unchecked by default) enables it. When unchecked, only exact matching lines are shown.
+
+When context is enabled:
 
 - **Type** — *Lines* (count-based) or *Seconds* (time-based).
 - **Amount** — number of lines (0–200) or seconds (0–3600).
@@ -158,6 +160,15 @@ Each filter shows a green **+** or red **−** badge indicating its type, and a 
 
 ### Closing
 Click outside the dialog or press Escape.
+
+---
+
+## Text selection context menu
+
+When log text is selected, after 100 ms, show a kebab icon next to the selected text that when clicked will open a context menu:
+
+* Add text to filter: take the highlighted text and open the filter dialog, filling in the text as the regex pattern. This is a short-cut to cutting and pasting the text.
+* Add text to focus: take the highlighted text and open the focus dialog, using the text as the regex pattern. This is a short-cut to cutting and pasting the text.
 
 ---
 

@@ -1,6 +1,7 @@
 import { openPanel, closePanel, addPanelGroup, appendLines, prependLines, getPanelIds, applyFocusToAll, getSerializableState, restoreFilters, setActivePanelByKey, toggleMergedView } from './panels.js';
 import { openFocusDialog, focusState, restoreFocusState } from './focus.js';
 import { saveState, loadState } from './state.js';
+import { initSelectionMenu } from './selection-menu.js';
 
 const POLL_INTERVAL_MS = 10_000;
 const WS_RECONNECT_BASE_MS = 1000;
@@ -38,6 +39,7 @@ function serializeFocus() {
   return {
     active: focusState.active,
     patterns: focusState.patterns.map(p => p.pattern),
+    contextEnabled: focusState.contextEnabled,
     contextType: focusState.contextType,
     contextAmount: focusState.contextAmount,
     contextDirection: focusState.contextDirection,
@@ -365,6 +367,7 @@ function init() {
     r.addEventListener('change', () => applyTheme(r.value));
   });
 
+  initSelectionMenu();
   connectWS();
   pollGroups();
   setInterval(pollGroups, POLL_INTERVAL_MS);
