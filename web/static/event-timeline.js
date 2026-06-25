@@ -268,14 +268,26 @@ function openOverflowPopup(e, evs) {
 
 // ── Zoom and pan ──────────────────────────────────────────────────────────────
 
+// Bounds derived from the current event set; updated by fitAllEvents().
+let eventRangeMinMs = 0;
+let eventRangeMaxMs = 0;
+
+function maxMsPerPx() {
+  // Zoomed-out limit: the full event span (plus padding) fills the viewport.
+  const vpWidth = viewportEl.clientWidth || 800;
+  const rangeMs = eventRangeMaxMs - eventRangeMinMs || 1000;
+  const pad = rangeMs * PAD_FRACTION;
+  return (rangeMs + 2 * pad) / vpWidth;
+}
+
 function fitAllEvents() {
   if (!allEvents.length || !viewportEl) return;
   const vpWidth = viewportEl.clientWidth || 800;
-  const minMs = Math.min(...allEvents.map(e => e.tsMs));
-  const maxMs = Math.max(...allEvents.map(e => e.tsMs));
-  const rangeMs = maxMs - minMs || 1000;
+  eventRangeMinMs = Math.min(...allEvents.map(e => e.tsMs));
+  eventRangeMaxMs = Math.max(...allEvents.map(e => e.tsMs));
+  const rangeMs = eventRangeMaxMs - eventRangeMinMs || 1000;
   const pad = rangeMs * PAD_FRACTION;
-  viewState.originMs = minMs - pad;
+  viewState.originMs = eventRangeMinMs - pad;
   viewState.msPerPx = (rangeMs + 2 * pad) / vpWidth;
 }
 
@@ -286,7 +298,7 @@ function attachHandlers() {
     const cursorX = e.clientX - rect.left;
     const cursorMs = viewState.originMs + cursorX * viewState.msPerPx;
     const factor = e.deltaY > 0 ? ZOOM_FACTOR : 1 / ZOOM_FACTOR;
-    viewState.msPerPx = Math.max(MIN_MS_PER_PX, viewState.msPerPx * factor);
+    viewState.msPerPx = Math.min(maxMsPerPx(), Math.max(MIN_MS_PER_PX, viewState.msPerPx * factor));
     // Keep the time under the cursor fixed
     viewState.originMs = cursorMs - cursorX * viewState.msPerPx;
     scheduleRender();
