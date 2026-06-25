@@ -15,6 +15,16 @@
         labels:
           app: postgres
 
+# clusterContext selects a named context from your kubeconfig (~/.kube/config).
+# Omit it (or leave it empty) to use the kubeconfig's current context.
+- name: prodPods
+  k8s:
+    clusterContext: prod-cluster
+    selectors:
+      - namespace: prod-ns
+        labels:
+          app: server
+
 - name: localFile
   file:
     path: /var/log/myapp/myapp.log

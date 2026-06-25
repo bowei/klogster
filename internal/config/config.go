@@ -16,7 +16,8 @@ type LogGroup struct {
 }
 
 type K8sSource struct {
-	Selectors []Selector `yaml:"selectors"`
+	ClusterContext string     `yaml:"clusterContext,omitempty"`
+	Selectors      []Selector `yaml:"selectors"`
 }
 
 type FileSource struct {

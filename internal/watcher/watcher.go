@@ -20,31 +20,34 @@ const (
 )
 
 type PodEvent struct {
-	Type          EventType
-	GroupName     string
-	Namespace     string
-	PodName       string
-	ContainerName string
-	FilePath      string // non-empty for file sources; empty for Kubernetes sources
+	Type           EventType
+	GroupName      string
+	ClusterContext string // kubeconfig context name; empty means current context
+	Namespace      string
+	PodName        string
+	ContainerName  string
+	FilePath       string // non-empty for file sources; empty for Kubernetes sources
 }
 
 type PodWatcher struct {
-	groupName  string
-	namespace  string
-	labels     map[string]string
-	containers []string
-	client     kubernetes.Interface
-	events     chan<- PodEvent
+	groupName      string
+	clusterContext string
+	namespace      string
+	labels         map[string]string
+	containers     []string
+	client         kubernetes.Interface
+	events         chan<- PodEvent
 }
 
-func NewPodWatcher(groupName, namespace string, labels map[string]string, containers []string, client kubernetes.Interface, events chan<- PodEvent) *PodWatcher {
+func NewPodWatcher(groupName, clusterContext, namespace string, labels map[string]string, containers []string, client kubernetes.Interface, events chan<- PodEvent) *PodWatcher {
 	return &PodWatcher{
-		groupName:  groupName,
-		namespace:  namespace,
-		labels:     labels,
-		containers: containers,
-		client:     client,
-		events:     events,
+		groupName:      groupName,
+		clusterContext: clusterContext,
+		namespace:      namespace,
+		labels:         labels,
+		containers:     containers,
+		client:         client,
+		events:         events,
 	}
 }
 
@@ -103,7 +106,7 @@ func (w *PodWatcher) Run(ctx context.Context) {
 			}
 			for _, c := range w.containersForPod(pod) {
 				select {
-				case w.events <- PodEvent{Type: Added, GroupName: w.groupName, Namespace: w.namespace, PodName: pod.Name, ContainerName: c}:
+				case w.events <- PodEvent{Type: Added, GroupName: w.groupName, ClusterContext: w.clusterContext, Namespace: w.namespace, PodName: pod.Name, ContainerName: c}:
 				case <-ctx.Done():
 					return
 				}
@@ -116,7 +119,7 @@ func (w *PodWatcher) Run(ctx context.Context) {
 			}
 			for _, c := range w.containersForPod(pod) {
 				select {
-				case w.events <- PodEvent{Type: Deleted, GroupName: w.groupName, Namespace: w.namespace, PodName: pod.Name, ContainerName: c}:
+				case w.events <- PodEvent{Type: Deleted, GroupName: w.groupName, ClusterContext: w.clusterContext, Namespace: w.namespace, PodName: pod.Name, ContainerName: c}:
 				case <-ctx.Done():
 					return
 				}

@@ -21,22 +21,22 @@ type PodInfo struct {
 }
 
 type Manager struct {
-	client kubernetes.Interface
-	store  *storage.Store
-	hub    *hub.Hub
-	stats  *Stats
+	clients map[string]kubernetes.Interface
+	store   *storage.Store
+	hub     *hub.Hub
+	stats   *Stats
 
 	mu     sync.Mutex
 	active map[string]context.CancelFunc
 }
 
-func NewManager(client kubernetes.Interface, store *storage.Store, h *hub.Hub) *Manager {
+func NewManager(clients map[string]kubernetes.Interface, store *storage.Store, h *hub.Hub) *Manager {
 	return &Manager{
-		client: client,
-		store:  store,
-		hub:    h,
-		stats:  newStats(),
-		active: make(map[string]context.CancelFunc),
+		clients: clients,
+		store:   store,
+		hub:     h,
+		stats:   newStats(),
+		active:  make(map[string]context.CancelFunc),
 	}
 }
 
@@ -83,7 +83,7 @@ func (m *Manager) startStreamer(ctx context.Context, ev watcher.PodEvent) {
 		opener = &fileLogOpener{path: ev.FilePath}
 	} else {
 		opener = &k8sLogOpener{
-			client:        m.client,
+			client:        m.clients[ev.ClusterContext],
 			namespace:     ev.Namespace,
 			podName:       ev.PodName,
 			containerName: ev.ContainerName,

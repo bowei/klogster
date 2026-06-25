@@ -54,6 +54,14 @@ make test-js    # JavaScript tests only (requires Node.js ≥ 18)
           - app
           - sidecar
 
+- name: prodPods
+  k8s:
+    clusterContext: prod-cluster  # optional: named context from ~/.kube/config
+    selectors:
+      - namespace: prod-ns
+        labels:
+          app: server
+
 - name: localFile
   file:
     path: /var/log/myapp/myapp.log
@@ -63,15 +71,19 @@ Each log group must have exactly one source — `k8s` or `file`.
 
 For `k8s` groups, `containers` is optional. When omitted, klogster streams all
 containers in each matching pod. Each container is tracked as a separate log source.
+`clusterContext` is optional; when omitted, the kubeconfig's current context is used.
+Multiple groups can reference different contexts to stream logs from multiple clusters
+side-by-side.
 
 For `file` groups, klogster tails the file at the given path and shows it as a
 single stream. No kubeconfig is needed if all groups use `file`.
 
 ## Functionality
 
-**Kubernetes sources** connect to the cluster in the standard kubeconfig. Logs are
-streamed from matching pods. The kubeconfig is only loaded when at least one `k8s`
-group is configured.
+**Kubernetes sources** connect to the cluster using the standard kubeconfig
+(`~/.kube/config`). Each unique `clusterContext` value results in a separate client;
+groups with no `clusterContext` share a client for the kubeconfig's current context.
+The kubeconfig is only loaded when at least one `k8s` group is configured.
 
 **File sources** tail a local file, polling for new content every 250 ms. No
 kubeconfig is required.

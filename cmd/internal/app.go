@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -50,28 +51,13 @@ func Run() {
 			log.Fatalf("loading config: %v", err)
 		}
 
-		var k8sClient kubernetes.Interface
-		for _, g := range cfg {
-			if g.K8s != nil {
-				loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-				kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-					loadingRules,
-					&clientcmd.ConfigOverrides{},
-				)
-				restConfig, err := kubeConfig.ClientConfig()
-				if err != nil {
-					log.Fatalf("building kube config: %v", err)
-				}
-				k8sClient, err = kubernetes.NewForConfig(restConfig)
-				if err != nil {
-					log.Fatalf("building kube client: %v", err)
-				}
-				break
-			}
+		k8sClients, err := buildK8sClients(cfg)
+		if err != nil {
+			log.Fatalf("building kube clients: %v", err)
 		}
 
-		streamerMgr = streamer.NewManager(k8sClient, store, h)
-		watcherMgr := watcher.NewManager(k8sClient, cfg)
+		streamerMgr = streamer.NewManager(k8sClients, store, h)
+		watcherMgr := watcher.NewManager(k8sClients, cfg)
 
 		go watcherMgr.Run(ctx)
 		go streamerMgr.Run(ctx, watcherMgr.Events())
@@ -92,4 +78,32 @@ func Run() {
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("http server: %v", err)
 	}
+}
+
+func buildK8sClients(cfg config.Config) (map[string]kubernetes.Interface, error) {
+	clients := map[string]kubernetes.Interface{}
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	for _, g := range cfg {
+		if g.K8s == nil {
+			continue
+		}
+		ctx := g.K8s.ClusterContext
+		if _, ok := clients[ctx]; ok {
+			continue
+		}
+		overrides := &clientcmd.ConfigOverrides{}
+		if ctx != "" {
+			overrides.CurrentContext = ctx
+		}
+		restConfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides).ClientConfig()
+		if err != nil {
+			return nil, fmt.Errorf("building kube config for context %q: %w", ctx, err)
+		}
+		client, err := kubernetes.NewForConfig(restConfig)
+		if err != nil {
+			return nil, fmt.Errorf("building kube client for context %q: %w", ctx, err)
+		}
+		clients[ctx] = client
+	}
+	return clients, nil
 }
