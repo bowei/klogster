@@ -220,6 +220,39 @@ When a template has an active duration set, lines that fall within the specified
 
 For historical lines loaded on panel open, the full range is computed in one pass. For live lines arriving over the WebSocket, ranges are tracked incrementally so newly arriving lines within an active window are highlighted as they appear.
 
+### Event timeline
+
+When event processing is active, a horizontal timeline strip appears between the header and the log panels. It shows every matched event across all open logs positioned at its timestamp on a time axis.
+
+**Layout**
+
+- Time runs left to right.
+- Each event is represented by its icon placed at the corresponding position on the axis.
+- When multiple events fall within the same time bucket (determined by the current zoom level), they are stacked vertically — earliest at top, latest nearest the axis.
+- If a bucket contains 6 or more events, the first 5 icons are shown and a `+N` label appears below them. Clicking `+N` opens a list of all events in that bucket.
+
+**Navigation**
+
+- Clicking an event icon scrolls the corresponding log panel to that line and briefly highlights it.
+
+**Hover tooltip**
+
+Hovering an event icon shows:
+
+- The template name.
+- The timestamp of the matching log line.
+- The log source (`pod/container`).
+- A table of captured metadata keys and values.
+
+**Zoom and pan**
+
+- **Scroll wheel** — zoom in and out, anchored to the cursor position.
+- **Click and drag** — pan left and right along the time axis.
+
+**Focus filter**
+
+The timeline only shows events from log lines that are currently visible. Lines hidden by the focus filter are excluded from the timeline.
+
 ### Persistence
 
 Event templates and the enabled/disabled state are stored in `localStorage` and restored automatically on page load. They are not included in the URL hash, so sharing a URL does not share event templates.
