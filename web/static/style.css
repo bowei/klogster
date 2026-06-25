@@ -1056,8 +1056,8 @@ mark.focus-match {
   border: 1px solid var(--border);
   border-top: none;
   border-radius: 0 0 4px 4px;
-  min-width: 280px;
-  max-width: 400px;
+  min-width: 320px;
+  max-width: 460px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 
@@ -1166,6 +1166,144 @@ mark.focus-match {
   flex-shrink: 0;
 }
 .filter-add-btn:hover { background: var(--accent-hover); }
+
+/* ── New compose-form styles ───────────────────────────────────────────────── */
+
+.filter-compose {
+  border-top: 1px solid var(--border);
+  padding: 6px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-type-row {
+  display: flex;
+}
+
+.filter-type-select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.filter-row-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 3px;
+  display: block;
+}
+
+.filter-query-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filter-query-row .filter-pattern-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-toggle-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+.filter-toggle-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.filter-toggle-btn:hover { color: var(--text); }
+
+.filter-level-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.filter-level-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.filter-level-chip {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+.filter-level-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.filter-level-chip:hover { color: var(--text); }
+.filter-level-chip.active:hover { color: #fff; }
+
+.filter-meta-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-meta-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filter-meta-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 11px;
+}
+.filter-meta-input:focus { outline: none; border-color: var(--accent); }
+.filter-meta-input::placeholder { color: var(--text-dim); }
+
+.filter-add-meta-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.filter-add-meta-btn:hover { text-decoration: underline; }
 
 .panel-log-wrap {
   flex: 1;
@@ -1521,6 +1659,11 @@ mark.focus-match {
   user-select: none;
 }
 
+.events-item-icon--none {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
 .events-item-info {
   flex: 1;
   min-width: 0;
@@ -1633,11 +1776,24 @@ mark.focus-match {
   padding: 5px 10px;
 }
 
+.events-icon-picker-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
 .events-icon-picker {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   gap: 3px;
-  flex: 1;
+}
+
+.events-icon-none {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 2px 6px;
+  align-self: flex-start;
 }
 
 .events-icon-option {

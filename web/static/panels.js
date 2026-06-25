@@ -41,12 +41,59 @@ setInterval(() => {
   }
 }, 1000);
 
-function lineVisible(filters, text) {
-  for (const f of filters) {
-    if (!f.re) continue;
-    if (f.type === 'negative' && f.re.test(text)) return false;
-    if (f.type === 'positive' && !f.re.test(text)) return false;
+function textMatches(text, query) {
+  if (!query.text) return true;
+  if (query.regex) {
+    try {
+      const re = new RegExp(query.text, query.caseSensitive ? '' : 'i');
+      return re.test(text);
+    } catch { return false; }
   }
+  return query.caseSensitive
+    ? text.includes(query.text)
+    : text.toLowerCase().includes(query.text.toLowerCase());
+}
+
+function ruleMatches(rule, entry) {
+  const rawText = entry.dataset.rawText || entry.querySelector('.log-body')?.textContent || '';
+  if (rule.query && rule.query.text && !textMatches(rawText, rule.query)) return false;
+  if (rule.levels && rule.levels.length > 0) {
+    const lvl = entry.dataset.level || 'OTHER';
+    if (!rule.levels.includes(lvl)) return false;
+  }
+  if (rule.metadata && rule.metadata.length > 0) {
+    let fields = null;
+    if (entry.dataset.fields) {
+      try { fields = JSON.parse(entry.dataset.fields); } catch { fields = {}; }
+    } else {
+      fields = {};
+    }
+    for (const m of rule.metadata) {
+      if (!m.key && !m.value) continue;
+      if (m.key) {
+        if (!(m.key in fields)) return false;
+        if (m.value && !textMatches(String(fields[m.key]), { text: m.value, caseSensitive: m.caseSensitive, regex: m.regex })) return false;
+      } else {
+        const anyMatch = Object.values(fields).some(v => textMatches(String(v), { text: m.value, caseSensitive: m.caseSensitive, regex: m.regex }));
+        if (!anyMatch) return false;
+      }
+    }
+  }
+  return true;
+}
+
+function ruleIsEmpty(rule) {
+  return (!rule.query || !rule.query.text) &&
+    (!rule.levels || rule.levels.length === 0) &&
+    (!rule.metadata || rule.metadata.every(m => !m.key && !m.value));
+}
+
+function entryVisible(filters, entry) {
+  if (!filters || filters.length === 0) return true;
+  const positives = filters.filter(f => f.type === 'positive');
+  const negatives = filters.filter(f => f.type === 'negative');
+  if (positives.length > 0 && !positives.some(r => ruleMatches(r, entry))) return false;
+  if (negatives.some(r => ruleMatches(r, entry))) return false;
   return true;
 }
 
@@ -89,9 +136,7 @@ function clearHighlight(entry) {
 
 function applyFilters(tab) {
   for (const entry of tab.logEl.querySelectorAll('.log-entry')) {
-    const bodyEl = entry.querySelector('.log-body');
-    const text = bodyEl ? bodyEl.textContent : entry.textContent;
-    entry.style.display = lineVisible(tab.filters, text) ? '' : 'none';
+    entry.style.display = entryVisible(tab.filters, entry) ? '' : 'none';
   }
   updateFilterBtn(tab);
   // Propagate to merged view if this tab's group is currently merged
@@ -106,9 +151,7 @@ function applyMergedFilters(pg) {
   for (const { el, tabId } of pg.mergedEntries) {
     const srcTab = tabById.get(tabId);
     if (!srcTab) { el.style.display = 'none'; continue; }
-    const bodyEl = el.querySelector('.log-body');
-    const text = bodyEl ? bodyEl.textContent : '';
-    el.style.display = lineVisible(srcTab.filters, text) ? '' : 'none';
+    el.style.display = entryVisible(srcTab.filters, el) ? '' : 'none';
   }
 }
 
@@ -122,9 +165,7 @@ function makeMergedEntry(tab, srcEntry) {
   clone.insertBefore(srcLabel, clone.querySelector('.log-body'));
 
   // Recompute visibility from source tab's filters (ignore focus-based display from source)
-  const bodyEl = clone.querySelector('.log-body');
-  const text = bodyEl ? bodyEl.textContent : '';
-  clone.style.display = lineVisible(tab.filters, text) ? '' : 'none';
+  clone.style.display = entryVisible(tab.filters, clone) ? '' : 'none';
 
   return clone;
 }
@@ -383,8 +424,7 @@ function applyPanelFocus(tab) {
   const highlightRe = buildFocusHighlightRe();
 
   entries.forEach((entry, i) => {
-    const text = entry.querySelector('.log-body')?.textContent ?? entry.textContent;
-    const show = visible.has(i) && lineVisible(tab.filters, text);
+    const show = visible.has(i) && entryVisible(tab.filters, entry);
     entry.style.display = show ? '' : 'none';
     if (show && matchSet.has(i)) {
       applyHighlight(entry, highlightRe);
@@ -422,8 +462,25 @@ export function applyFocusToAll() {
 
 document.addEventListener('focus:count-request', () => countFocusMatches());
 
+const FILTER_LEVELS = ['DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL', 'TRACE'];
+
+function ruleSummary(rule) {
+  const parts = [];
+  if (rule.query && rule.query.text) {
+    const flags = [rule.query.caseSensitive ? 'Aa' : '', rule.query.regex ? '.*' : ''].filter(Boolean).join(' ');
+    parts.push(`"${rule.query.text}"${flags ? ` (${flags})` : ''}`);
+  }
+  if (rule.levels && rule.levels.length > 0) parts.push(`level: ${rule.levels.join(',')}`);
+  if (rule.metadata) {
+    for (const m of rule.metadata) {
+      if (m.key || m.value) parts.push(`${m.key || '*'}=${m.value || '*'}`);
+    }
+  }
+  return parts.join(' \xb7 ') || '(empty)';
+}
+
 function updateFilterBtn(tab) {
-  const n = tab.filters.length;
+  const n = tab.filters.filter(f => !ruleIsEmpty(f)).length;
   tab.filterBtn.textContent = n > 0 ? `filter (${n})` : 'filter';
   tab.filterBtn.classList.toggle('active', n > 0);
   tab.filterBtn.title = n > 0 ? `${n} filter(s) active — click to edit` : 'Add log filters';
@@ -431,7 +488,7 @@ function updateFilterBtn(tab) {
 
 let activeFilterDialog = null;
 
-function openFilterDialog(tab, initialPattern = '') {
+function openFilterDialog(tab, initialQueryText = '') {
   const toolbar = tab.el.querySelector('.panel-toolbar');
 
   if (activeFilterDialog && activeFilterDialog._tabId === tab.id) {
@@ -449,10 +506,12 @@ function openFilterDialog(tab, initialPattern = '') {
   dialog._tabId = tab.id;
   activeFilterDialog = dialog;
 
+  // ── Header ────────────────────────────────────────────────────────────────
   const header = document.createElement('div');
   header.className = 'filter-dialog-header';
   header.textContent = 'Log Filters';
 
+  // ── Rule list ─────────────────────────────────────────────────────────────
   const listEl = document.createElement('div');
   listEl.className = 'filter-list';
 
@@ -474,14 +533,13 @@ function openFilterDialog(tab, initialPattern = '') {
       badge.textContent = f.type === 'positive' ? '+' : '−';
       badge.title = f.type === 'positive' ? 'show only matching' : 'hide matching';
 
-      const pat = document.createElement('span');
-      pat.className = 'filter-pattern' + (f.re ? '' : ' filter-pattern-invalid');
-      pat.textContent = f.pattern;
-      pat.title = f.re ? f.pattern : `Invalid regexp: ${f.pattern}`;
+      const summary = document.createElement('span');
+      summary.className = 'filter-pattern';
+      summary.textContent = ruleSummary(f);
 
       const removeBtn = document.createElement('button');
       removeBtn.className = 'filter-remove';
-      removeBtn.textContent = '×';
+      removeBtn.textContent = '\xd7';
       removeBtn.addEventListener('click', () => {
         tab.filters.splice(i, 1);
         applyFilters(tab);
@@ -490,60 +548,230 @@ function openFilterDialog(tab, initialPattern = '') {
       });
 
       item.appendChild(badge);
-      item.appendChild(pat);
+      item.appendChild(summary);
       item.appendChild(removeBtn);
       listEl.appendChild(item);
     });
   }
 
-  const addRow = document.createElement('div');
-  addRow.className = 'filter-add-row';
+  // ── Compose form ─────────────────────────────────────────────────────────
+  const form = document.createElement('div');
+  form.className = 'filter-compose';
 
+  // Type toggle row
+  const typeRow = document.createElement('div');
+  typeRow.className = 'filter-type-row';
   const typeSelect = document.createElement('select');
   typeSelect.className = 'filter-type-select';
-  [['positive', '+ show'], ['negative', '− hide']].forEach(([v, t]) => {
+  [['positive', '+ show only matching'], ['negative', '− hide matching']].forEach(([v, t]) => {
     const opt = document.createElement('option');
     opt.value = v;
     opt.textContent = t;
     typeSelect.appendChild(opt);
   });
+  typeRow.appendChild(typeSelect);
+  form.appendChild(typeRow);
 
-  const patInput = document.createElement('input');
-  patInput.type = 'text';
-  patInput.className = 'filter-pattern-input';
-  patInput.placeholder = 'regexp pattern…';
-  patInput.spellcheck = false;
+  // Query row
+  const formState = {
+    query: { text: '', caseSensitive: false, regex: false },
+    levels: [],
+    metadata: [],
+  };
 
+  const queryRow = document.createElement('div');
+  queryRow.className = 'filter-query-row';
+  const queryLabel = document.createElement('span');
+  queryLabel.className = 'filter-row-label';
+  queryLabel.textContent = 'Query';
+  const queryInput = document.createElement('input');
+  queryInput.type = 'text';
+  queryInput.className = 'filter-pattern-input';
+  queryInput.placeholder = 'substring…';
+  queryInput.spellcheck = false;
+
+  const btnCase = document.createElement('button');
+  btnCase.className = 'filter-toggle-btn';
+  btnCase.title = 'Case sensitive';
+  btnCase.textContent = 'Aa';
+  btnCase.addEventListener('click', () => {
+    formState.query.caseSensitive = !formState.query.caseSensitive;
+    btnCase.classList.toggle('active', formState.query.caseSensitive);
+  });
+
+  const btnRegex = document.createElement('button');
+  btnRegex.className = 'filter-toggle-btn';
+  btnRegex.title = 'Regular expression';
+  btnRegex.textContent = '.*';
+  btnRegex.addEventListener('click', () => {
+    formState.query.regex = !formState.query.regex;
+    btnRegex.classList.toggle('active', formState.query.regex);
+    queryInput.placeholder = formState.query.regex ? 'regexp…' : 'substring…';
+  });
+
+  queryRow.appendChild(queryLabel);
+  queryRow.appendChild(queryInput);
+  queryRow.appendChild(btnCase);
+  queryRow.appendChild(btnRegex);
+  form.appendChild(queryRow);
+
+  // Level row
+  const levelRow = document.createElement('div');
+  levelRow.className = 'filter-level-row';
+  const levelLabel = document.createElement('span');
+  levelLabel.className = 'filter-row-label';
+  levelLabel.textContent = 'Level';
+  levelRow.appendChild(levelLabel);
+
+  const levelChips = document.createElement('div');
+  levelChips.className = 'filter-level-chips';
+
+  FILTER_LEVELS.forEach(lvl => {
+    const chip = document.createElement('button');
+    chip.className = 'filter-level-chip';
+    chip.textContent = lvl;
+    chip.dataset.level = lvl;
+    chip.addEventListener('click', () => {
+      const idx = formState.levels.indexOf(lvl);
+      if (idx >= 0) {
+        formState.levels.splice(idx, 1);
+        chip.classList.remove('active');
+      } else {
+        formState.levels.push(lvl);
+        chip.classList.add('active');
+      }
+    });
+    levelChips.appendChild(chip);
+  });
+
+  levelRow.appendChild(levelChips);
+  form.appendChild(levelRow);
+
+  // Metadata rows
+  const metaSection = document.createElement('div');
+  metaSection.className = 'filter-meta-section';
+  const metaLabel = document.createElement('span');
+  metaLabel.className = 'filter-row-label';
+  metaLabel.textContent = 'Fields';
+  metaSection.appendChild(metaLabel);
+
+  const metaList = document.createElement('div');
+  metaList.className = 'filter-meta-list';
+
+  function addMetaRow(key = '', value = '', caseSensitive = false, regex = false) {
+    const m = { key, value, caseSensitive, regex };
+    formState.metadata.push(m);
+    const row = document.createElement('div');
+    row.className = 'filter-meta-row';
+
+    const keyInput = document.createElement('input');
+    keyInput.type = 'text';
+    keyInput.className = 'filter-meta-input';
+    keyInput.placeholder = 'key';
+    keyInput.spellcheck = false;
+    keyInput.value = key;
+    keyInput.addEventListener('input', () => { m.key = keyInput.value; });
+
+    const valInput = document.createElement('input');
+    valInput.type = 'text';
+    valInput.className = 'filter-meta-input';
+    valInput.placeholder = 'value';
+    valInput.spellcheck = false;
+    valInput.value = value;
+    valInput.addEventListener('input', () => { m.value = valInput.value; });
+
+    const mBtnCase = document.createElement('button');
+    mBtnCase.className = 'filter-toggle-btn';
+    mBtnCase.title = 'Case sensitive';
+    mBtnCase.textContent = 'Aa';
+    mBtnCase.classList.toggle('active', caseSensitive);
+    mBtnCase.addEventListener('click', () => {
+      m.caseSensitive = !m.caseSensitive;
+      mBtnCase.classList.toggle('active', m.caseSensitive);
+    });
+
+    const mBtnRegex = document.createElement('button');
+    mBtnRegex.className = 'filter-toggle-btn';
+    mBtnRegex.title = 'Regular expression';
+    mBtnRegex.textContent = '.*';
+    mBtnRegex.classList.toggle('active', regex);
+    mBtnRegex.addEventListener('click', () => {
+      m.regex = !m.regex;
+      mBtnRegex.classList.toggle('active', m.regex);
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'filter-remove';
+    removeBtn.textContent = '\xd7';
+    removeBtn.addEventListener('click', () => {
+      const idx = formState.metadata.indexOf(m);
+      if (idx >= 0) formState.metadata.splice(idx, 1);
+      row.remove();
+    });
+
+    row.appendChild(keyInput);
+    row.appendChild(valInput);
+    row.appendChild(mBtnCase);
+    row.appendChild(mBtnRegex);
+    row.appendChild(removeBtn);
+    metaList.appendChild(row);
+    return keyInput;
+  }
+
+  const addMetaBtn = document.createElement('button');
+  addMetaBtn.className = 'filter-add-meta-btn';
+  addMetaBtn.textContent = '+ add field';
+  addMetaBtn.addEventListener('click', () => {
+    const input = addMetaRow();
+    input.focus();
+  });
+
+  metaSection.appendChild(metaList);
+  metaSection.appendChild(addMetaBtn);
+  form.appendChild(metaSection);
+
+  // Add filter button
   const addBtn = document.createElement('button');
   addBtn.className = 'filter-add-btn';
-  addBtn.textContent = 'Add';
+  addBtn.textContent = 'Add filter';
 
   function doAdd() {
-    const pattern = patInput.value.trim();
-    if (!pattern) return;
-    let re = null;
-    try { re = new RegExp(pattern, 'i'); } catch (_) {}
-    tab.filters.push({ type: typeSelect.value, pattern, re });
+    formState.query.text = queryInput.value.trim();
+    const rule = {
+      type: typeSelect.value,
+      query: { ...formState.query },
+      levels: [...formState.levels],
+      metadata: formState.metadata.filter(m => m.key || m.value).map(m => ({ ...m })),
+    };
+    if (ruleIsEmpty(rule)) return;
+    tab.filters.push(rule);
     applyFilters(tab);
     renderList();
     notifyStateChanged();
-    patInput.value = '';
-    patInput.focus();
+    // Reset form
+    queryInput.value = '';
+    formState.query = { text: '', caseSensitive: false, regex: false };
+    btnCase.classList.remove('active');
+    btnRegex.classList.remove('active');
+    queryInput.placeholder = 'substring…';
+    formState.levels = [];
+    levelChips.querySelectorAll('.filter-level-chip').forEach(c => c.classList.remove('active'));
+    formState.metadata = [];
+    metaList.innerHTML = '';
+    queryInput.focus();
   }
 
   addBtn.addEventListener('click', doAdd);
-  patInput.addEventListener('keydown', e => {
+  queryInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') doAdd();
     if (e.key === 'Escape') { dialog.remove(); activeFilterDialog = null; }
   });
 
-  addRow.appendChild(typeSelect);
-  addRow.appendChild(patInput);
-  addRow.appendChild(addBtn);
+  form.appendChild(addBtn);
 
   dialog.appendChild(header);
   dialog.appendChild(listEl);
-  dialog.appendChild(addRow);
+  dialog.appendChild(form);
   toolbar.appendChild(dialog);
 
   function onOutside(e) {
@@ -556,8 +784,8 @@ function openFilterDialog(tab, initialPattern = '') {
   setTimeout(() => document.addEventListener('mousedown', onOutside, true), 0);
 
   renderList();
-  if (initialPattern) patInput.value = initialPattern;
-  patInput.focus();
+  if (initialQueryText) queryInput.value = initialQueryText;
+  queryInput.focus();
 }
 
 export function findTabContaining(el) {
@@ -585,6 +813,7 @@ export function openFilterDialogWithPattern(tab, pattern) {
   }
   openFilterDialog(tab, pattern);
 }
+
 
 // ── Log entry building ────────────────────────────────────────────────────────
 
@@ -618,6 +847,7 @@ function buildLogEntry(ts, message, fields, level) {
     lvlEl.dataset.level = level;
   }
   entry.appendChild(lvlEl);
+  entry.dataset.level = level || '';
 
   const bodyEl = document.createElement('div');
   bodyEl.className = 'log-body';
@@ -628,6 +858,7 @@ function buildLogEntry(ts, message, fields, level) {
   bodyEl.appendChild(msgEl);
 
   if (fields) {
+    entry.dataset.fields = JSON.stringify(fields);
     for (const key of Object.keys(fields).sort()) {
       const fieldEl = document.createElement('div');
       fieldEl.className = 'log-field';
@@ -1086,7 +1317,7 @@ export function appendLines(messages) {
 
     const bodyEl = entry.querySelector('.log-body');
     const text = bodyEl ? bodyEl.textContent : msg.message || '';
-    const panelVisible = lineVisible(tab.filters, text);
+    const panelVisible = entryVisible(tab.filters, entry);
     const matches = focusState.active && lineMatchesFocus(text);
     const focusVisible = !focusState.active || matches;
     if (!panelVisible || !focusVisible) {
@@ -1231,7 +1462,12 @@ export function getSerializableState() {
         : null,
       tabs: pg.tabs.map(t => ({
         group: t.group, ns: t.ns, pod: t.pod, container: t.container,
-        filters: t.filters.map(f => ({ type: f.type, pattern: f.pattern })),
+        filters: t.filters.map(f => ({
+          type: f.type,
+          query: f.query ? { ...f.query } : undefined,
+          levels: f.levels ? [...f.levels] : undefined,
+          metadata: f.metadata ? f.metadata.map(m => ({ ...m })) : undefined,
+        })),
       })),
     };
   });
@@ -1241,11 +1477,14 @@ export function restoreFilters(group, ns, pod, container, filters) {
   const result = getTabByKey(group, ns, pod, container);
   if (!result) return;
   const { tab } = result;
-  tab.filters = filters.map(f => {
-    let re = null;
-    try { re = new RegExp(f.pattern, 'i'); } catch {}
-    return { type: f.type, pattern: f.pattern, re };
-  });
+  tab.filters = filters
+    .filter(f => f.query || f.levels || f.metadata)
+    .map(f => ({
+      type: f.type || 'positive',
+      query: f.query || { text: '', caseSensitive: false, regex: false },
+      levels: f.levels || [],
+      metadata: f.metadata || [],
+    }));
   applyFilters(tab);
 }
 
@@ -1270,6 +1509,7 @@ export function getAllEvents() {
         let evs;
         try { evs = JSON.parse(entry.dataset.eventData); } catch { continue; }
         for (const ev of evs) {
+          if (!ev.icon) continue;
           results.push({ ts, tsMs, name: ev.name, icon: ev.icon, color: ev.color, metadata: ev.metadata, tab, entry });
         }
       }

@@ -61,7 +61,7 @@ export function matchAndAnnotate(entry, text) {
     });
     matched.push({
       name: tmpl.name,
-      icon: tmpl.icon || '●',
+      icon: tmpl.icon ?? '',
       color: tmpl.color || '',
       activeDuration: tmpl.activeDuration ?? 0,
       metadata,
@@ -88,17 +88,18 @@ export function clearEntryEvents(entry) {
 
 function renderCol(col, evs) {
   col.innerHTML = '';
-  for (const ev of evs.slice(0, 3)) {
+  const visible = evs.filter(ev => ev.icon);
+  for (const ev of visible.slice(0, 3)) {
     const span = document.createElement('span');
     span.className = 'log-event-icon';
     span.textContent = ev.icon;
     if (ev.color) span.style.color = ev.color;
     col.appendChild(span);
   }
-  if (evs.length > 3) {
+  if (visible.length > 3) {
     const more = document.createElement('span');
     more.className = 'log-event-more';
-    more.textContent = `+${evs.length - 3}`;
+    more.textContent = `+${visible.length - 3}`;
     col.appendChild(more);
   }
 }
@@ -331,9 +332,9 @@ export function openEventsDialog(btn) {
       row.className = 'events-item' + (t.id === editingId ? ' events-item--editing' : '');
 
       const iconEl = document.createElement('span');
-      iconEl.className = 'events-item-icon';
-      iconEl.textContent = t.icon || '●';
-      if (t.color) iconEl.style.color = t.color;
+      iconEl.className = 'events-item-icon' + (t.icon ? '' : ' events-item-icon--none');
+      iconEl.textContent = t.icon || '—';
+      if (t.icon && t.color) iconEl.style.color = t.color;
 
       const info = document.createElement('span');
       info.className = 'events-item-info';
@@ -427,7 +428,7 @@ export function openEventsDialog(btn) {
     keysRow.appendChild(keysInput);
 
     // Icon picker
-    let selectedIcon = d.icon || '●';
+    let selectedIcon = d.icon ?? '';
 
     // colorInput declared before picker so click handlers can update it
     const colorInput = inp('color');
@@ -441,6 +442,21 @@ export function openEventsDialog(btn) {
     icLbl.className = 'events-form-lbl';
     icLbl.textContent = 'Icon';
 
+    const pickerWrap = document.createElement('div');
+    pickerWrap.className = 'events-icon-picker-wrap';
+
+    const noneBtn = document.createElement('button');
+    noneBtn.type = 'button';
+    noneBtn.className = 'events-icon-option events-icon-none' + (selectedIcon === '' ? ' selected' : '');
+    noneBtn.textContent = 'none';
+    noneBtn.title = 'No icon — event is functional only (not shown in log or timeline)';
+    noneBtn.addEventListener('click', () => {
+      selectedIcon = '';
+      noneBtn.classList.add('selected');
+      for (const c of pickerGrid.children) c.classList.remove('selected');
+    });
+    pickerWrap.appendChild(noneBtn);
+
     const pickerGrid = document.createElement('div');
     pickerGrid.className = 'events-icon-picker';
     for (const preset of ICON_PRESETS) {
@@ -450,19 +466,21 @@ export function openEventsDialog(btn) {
       cell.textContent = preset.icon;
       cell.style.color = preset.color;
       cell.title = preset.icon;
-      if (preset.icon === selectedIcon && preset.color === colorInput.value) {
+      if (selectedIcon !== '' && preset.icon === selectedIcon && preset.color === colorInput.value) {
         cell.classList.add('selected');
       }
       cell.addEventListener('click', () => {
         selectedIcon = preset.icon;
         colorInput.value = preset.color;
+        noneBtn.classList.remove('selected');
         for (const c of pickerGrid.children) c.classList.remove('selected');
         cell.classList.add('selected');
       });
       pickerGrid.appendChild(cell);
     }
+    pickerWrap.appendChild(pickerGrid);
     icRow.appendChild(icLbl);
-    icRow.appendChild(pickerGrid);
+    icRow.appendChild(pickerWrap);
 
     // Color (fine-tune)
     const clrRow = addRow('Color');
@@ -516,7 +534,7 @@ export function openEventsDialog(btn) {
       else if (durSel.value === 'custom') activeDuration = Math.max(1, parseInt(durInput.value, 10) || 1);
 
       const metadataKeys = keysInput.value.split(',').map(s => s.trim()).filter(Boolean);
-      const icon = selectedIcon || '●';
+      const icon = selectedIcon;
       const color = colorInput.value;
 
       if (isNew) {
