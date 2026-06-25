@@ -9,7 +9,7 @@ A small colored circle in the header shows WebSocket state: gray while connectin
 Pauses all live log updates across every panel. New lines arriving during the pause are buffered in memory; the button shows ▶ and hovering shows the count of buffered lines. Clicking ▶ flushes the buffer and resumes tailing. Useful for reading a burst of activity without the log scrolling away.
 
 ### Focus button
-Opens the focus dialog (see [Focus](#focus)). The button turns accent-colored when any focus pattern is active.
+Opens the focus dialog (see [Focus](#focus)). The button turns accent-colored when any focus filter is active.
 
 ### + Panel button
 Creates a new empty panel column and makes it the active target for the next log source opened from the browser. See [Panel columns](#panel-columns).
@@ -102,13 +102,19 @@ Hovering over any log line shows an orange horizontal line in all other panels a
 
 ## Focus
 
-Focus filters all panels simultaneously, keeping only lines that match one or more regexp patterns plus an optional window of surrounding context.
+Focus filters all panels simultaneously, keeping only lines that match one or more filters plus an optional window of surrounding context.
 
-### Adding patterns
-Type a regexp in the input and click **Add** (or press Enter). Patterns are case-insensitive. An invalid regexp shows a red error message and is not added. Multiple patterns are ORed together.
+### Adding filters
+Compose a filter using any combination of:
 
-### Pattern list
-Active patterns are listed with a × button to remove each individually. Removing the last pattern clears focus entirely.
+- **Query** — substring or regexp, with **Aa** (case-sensitive) and **.\*** (regexp mode) toggles. Default is case-insensitive substring.
+- **Level** — click one or more level chips (DEBUG, INFO, WARN, ERROR, FATAL, TRACE) to restrict to those levels only.
+- **Fields** — key/value rows for structured log fields, each with its own Aa and .* toggles. Click **+ add field** to add a row.
+
+Click **Add** (or press Enter in the query box) to add the composed filter. Multiple filters are ORed: a line is visible if it matches any one of them.
+
+### Filter list
+Active filters are listed with a summary and a × button to remove each individually. Removing the last filter clears focus entirely.
 
 ### Context window
 An optional window of surrounding lines or seconds shown around each match. The **Context** checkbox (unchecked by default) enables it. When unchecked, only exact matching lines are shown.
@@ -123,7 +129,7 @@ When context is enabled:
 While focus is active, the dialog shows `X of Y lines match` updated in real time across all panels.
 
 ### Highlighting
-Matched text within visible lines is highlighted with a yellow background mark.
+Query text from active filters is highlighted with a yellow background mark within visible lines.
 
 ### Applied to new lines
 Lines arriving from the live stream are immediately filtered and highlighted according to the current focus state.
@@ -153,10 +159,16 @@ Each panel has its own independent filter stack, separate from the global focus.
 Click the **filter** button in a panel's toolbar. When filters are active the button shows the count. Only one filter dialog is open at a time.
 
 ### Adding filters
-Choose **+ show** (include only matching lines) or **− hide** (hide matching lines), enter a regexp, and click **Add** or press Enter. Filters are case-insensitive.
+Choose **+ show** (keep only matching lines) or **− hide** (remove matching lines) from the type selector. Then compose the filter using any combination of:
+
+- **Query** — substring or regexp, with **Aa** (case-sensitive) and **.\*** (regexp mode) toggles. Default is case-insensitive substring.
+- **Level** — click one or more level chips (DEBUG, INFO, WARN, ERROR, FATAL, TRACE) to restrict to those levels only.
+- **Fields** — key/value rows for structured log fields, each with its own Aa and .* toggles. Click **+ add field** to add a row.
+
+Click **Add filter** (or press Enter in the query box) to add the composed filter. Multiple positive filters are ORed: a line is visible if it matches any of them. Negative filters hide any line that matches.
 
 ### Filter list
-Each filter shows a green **+** or red **−** badge indicating its type, and a × to remove it. An invalid regexp is shown in red and has no effect.
+Each filter shows a green **+** or red **−** badge indicating its type, a summary of what it matches, and a × to remove it.
 
 ### Closing
 Click outside the dialog or press Escape.
@@ -174,15 +186,14 @@ When log text is selected, after 100 ms, show a kebab icon next to the selected 
 
 ## Events
 
-The **Events** button in the header opens the event template manager. Event templates match log lines by regular expression and annotate them with a colored icon in the log view.
+The **Events** button in the header opens the event template manager. Event templates match log lines using the unified filter component and annotate them with a colored icon in the log view.
 
 ### Event templates
 
 Each template has:
 
 - **Name** — a human-readable label shown in the icon tooltip.
-- **Regexp** — a regular expression tested against the full raw log line. Capture groups become named metadata values.
-- **Keys** — comma-separated names for each capture group, in order. For example, a regexp `Sent to client ([0-9]+)` with key `client_id` captures the client ID from matching lines.
+- **Match** — a filter composed using any combination of query (substring or regexp with Aa and .* toggles), log level chips, and structured field key/value rows (with their own Aa and .* toggles). A line must satisfy all non-empty parts of the filter to be considered a match. Field rows whose keys appear in the matched line's structured data are captured as metadata values shown in the tooltip.
 - **Icon** — a visual marker shown in the log for matching lines. Choose from the built-in picker (colored circles `●`, stars `★`, or exclamation marks `!` in eight colors, plus a row of emoji) or fine-tune with the color swatch beneath the grid.
 - **Color** — used for the icon (symbols only; emoji render in their own colors) and for the active-duration border (see below).
 - **Active duration** — how long after the match to highlight subsequent lines:
@@ -212,7 +223,7 @@ Up to three icons are shown per line. If more templates match, a `+N` overflow l
 Hovering an event icon shows a small tooltip with:
 
 - The template name in bold.
-- A table of captured metadata keys and the values extracted from that specific line.
+- A table of the field keys specified in the template's match filter and the values from that specific log line.
 
 ### Active-duration highlighting
 
@@ -242,7 +253,7 @@ Hovering an event icon shows:
 - The template name.
 - The timestamp of the matching log line.
 - The log source (`pod/container`).
-- A table of captured metadata keys and values.
+- A table of field keys from the template's match filter and the values from that log line.
 
 **Zoom and pan**
 
@@ -285,4 +296,4 @@ The full UI state is encoded as base64 JSON in the URL hash and updated whenever
 - The active tab per column
 - Whether each column is in merged view
 - Per-tab filters
-- Focus patterns and context settings
+- Focus filters and context settings
