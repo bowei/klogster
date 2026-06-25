@@ -49,3 +49,33 @@ Each Event will have metadata associated with it:
 * If events are active, show an extra column with the icon for the events for the given
   log line to the right of the timestamp column in the log lines that have matching events.
 * Hovering over the event icon will show the event name and a small table of the metadata.
+
+## Event timeline
+
+If Events are enabled, show a horizontal timeline below the top menu bar above the log panels.
+
+The timeline should show time going from left to right, zoomable via scroll wheel.
+Show the event icon on the timeline when the Event occurred.
+
+If multiple events occurred around the same time, show them as a vertical stack going 
+from earliest event (top) to latest event (bottom). To make the visual display line up,
+quantize where the event icons are displayed to the icon size so they visually stack.
+
+```
+     event_1
+     event_2
+     event_3
+
+ <---|-----|-----|------> 
+``` 
+
+If there are more than 8 events on a given stack, show 7 icons and an ellipsis (...) that
+when clicked opens the full list of events that occurred at that time period.
+
+Hover over the event icon shows details:
+
+* Timestamp
+* Log where the event occurred
+* Metadata
+
+Clicking on the event icon will take you to the log line corresponding to the event.

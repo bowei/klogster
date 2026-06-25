@@ -1254,6 +1254,29 @@ export function setActivePanelByKey(group, ns, pod, container) {
   if (result) activateTab(result.pg.id, result.tab.id);
 }
 
+// Returns all matched events across all open tabs, with tab + entry references.
+// [{ ts, tsMs, name, icon, color, metadata, tab, entry }]
+export function getAllEvents() {
+  const results = [];
+  for (const pg of panelGroups) {
+    for (const tab of pg.tabs) {
+      for (const entry of tab.logEl.children) {
+        if (!entry.dataset.eventData) continue;
+        const ts = entry.dataset.ts;
+        if (!ts) continue;
+        const tsMs = new Date(ts).getTime();
+        if (!tsMs) continue;
+        let evs;
+        try { evs = JSON.parse(entry.dataset.eventData); } catch { continue; }
+        for (const ev of evs) {
+          results.push({ ts, tsMs, name: ev.name, icon: ev.icon, color: ev.color, metadata: ev.metadata, tab, entry });
+        }
+      }
+    }
+  }
+  return results;
+}
+
 // Recompute all event annotations when templates or enabled state changes.
 document.addEventListener('events:changed', () => {
   for (const pg of panelGroups) {

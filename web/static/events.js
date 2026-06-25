@@ -5,19 +5,16 @@ const STORAGE_KEY = 'klogster:events';
 const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#06b6d4', '#ec4899'];
 
 export const ICON_PRESETS = [
-  // Filled circles
   ...COLORS.map(color => ({ icon: '●', color })),
-  // Stars
-  ...COLORS.map(color => ({ icon: '★', color })),
-  // Exclamation marks
-  ...COLORS.map(color => ({ icon: '!', color })),
+  ...COLORS.map(color => ({ icon: '▶', color })),
+  ...COLORS.map(color => ({ icon: '■', color })),
+  ...COLORS.map(color => ({ icon: '◆', color })),
   // Emoji
   { icon: '🔥', color: '#f97316' },
   { icon: '⚡', color: '#eab308' },
   { icon: '⚠️', color: '#f97316' },
   { icon: '🚨', color: '#ef4444' },
   { icon: '💡', color: '#eab308' },
-  { icon: '🐛', color: '#22c55e' },
   { icon: '✅', color: '#22c55e' },
   { icon: '❌', color: '#ef4444' },
 ];

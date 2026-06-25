@@ -1,6 +1,7 @@
 import { openPanel, closePanel, addPanelGroup, appendLines, prependLines, getPanelIds, applyFocusToAll, getSerializableState, restoreFilters, setActivePanelByKey, toggleMergedView } from './panels.js';
 import { openFocusDialog, focusState, restoreFocusState } from './focus.js';
 import { initEvents, openEventsDialog, updateEventsBtn } from './events.js';
+import { initTimeline, refreshTimeline, refreshTimelineNow } from './event-timeline.js';
 import { saveState, loadState } from './state.js';
 import { initSelectionMenu } from './selection-menu.js';
 
@@ -28,6 +29,7 @@ function flushLiveBuffer() {
   const batch = liveBuffer;
   liveBuffer = [];
   appendLines(batch);
+  refreshTimeline();
 }
 
 function panelKey(group, ns, pod, container) {
@@ -139,6 +141,7 @@ async function openPodPanel(group, ns, pod, container) {
     const lines = await resp.json();
     if (Array.isArray(lines) && lines.length) {
       prependLines(group, ns, pod, container, lines);
+      refreshTimeline();
     }
   } catch { /* ignore — live stream will work regardless */ }
 
@@ -303,6 +306,7 @@ function togglePause() {
     const batch = pauseBuffer;
     pauseBuffer = [];
     appendLines(batch);
+    refreshTimeline();
   }
   updatePauseButton();
 }
@@ -319,11 +323,17 @@ function init() {
   header.appendChild(dot);
 
   initEvents();
+  initTimeline();
 
   const eventsBtn = document.getElementById('btn-events');
   updateEventsBtn(eventsBtn);
   eventsBtn.addEventListener('click', e => openEventsDialog(e.currentTarget));
-  document.addEventListener('events:changed', () => updateEventsBtn(eventsBtn));
+  document.addEventListener('events:changed', () => {
+    updateEventsBtn(eventsBtn);
+    // panels.js recomputes event annotations synchronously before this runs,
+    // so we can collect fresh data immediately.
+    refreshTimelineNow();
+  });
 
   document.getElementById('btn-focus').addEventListener('click', e => {
     openFocusDialog(e.currentTarget);

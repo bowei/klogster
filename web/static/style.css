@@ -1215,7 +1215,8 @@ mark.focus-match {
   align-items: flex-start;
   padding: 0 8px;
 }
-.log-entry:hover { background: var(--bg3); }
+.log-entry:hover,
+.log-entry--jumped { background: var(--bg3); }
 
 .log-ts {
   width: 29ch;
@@ -1705,3 +1706,164 @@ mark.focus-match {
   cursor: pointer;
 }
 .events-cancel-btn:hover { color: var(--text); border-color: var(--text-dim); }
+
+/* ── Event timeline ── */
+#event-timeline {
+  display: none;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  height: 0;
+  overflow: hidden;
+  transition: height 0.15s ease;
+}
+
+.events-active #event-timeline {
+  display: block;
+  height: 120px;
+}
+
+#etl-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+}
+
+/* Canvas fills the viewport above the axis */
+#etl-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 20px;
+}
+
+/* Axis strip pinned to the bottom of the viewport */
+#etl-axis {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 20px;
+  pointer-events: none;
+}
+
+.etl-tick {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 6px;
+  background: var(--text-dim);
+}
+
+.etl-tick-label {
+  position: absolute;
+  top: 7px;
+  left: 3px;
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+
+/* Stacked icon column — grows upward from the axis.
+   column layout: children[0] (earliest) at top, latest at bottom near axis. */
+.etl-stack {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 20px;
+}
+
+.etl-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.1s;
+  flex-shrink: 0;
+}
+.etl-icon:hover {
+  background: var(--bg3);
+  filter: brightness(1.3);
+}
+
+.etl-more {
+  display: block;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.etl-more:hover {
+  background: var(--bg3);
+  color: var(--text);
+}
+
+/* Overflow popup */
+.etl-overflow-popup {
+  position: fixed;
+  z-index: 600;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 0;
+  min-width: 180px;
+  max-width: 280px;
+  max-height: 240px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+  font-size: 11px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.etl-overflow-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.etl-overflow-row:hover {
+  background: var(--bg3);
+}
+
+.etl-overflow-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.etl-overflow-info {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Extra tooltip fields used by the timeline */
+.event-tip-ts {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+
+.event-tip-src {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
