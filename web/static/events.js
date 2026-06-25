@@ -1,4 +1,5 @@
 // events.js — Event template management, matching, and display.
+import { ruleMatches, ruleIsEmpty, ruleSummary, buildFilterCompose } from './filter.js';
 
 const STORAGE_KEY = 'klogster:events';
 
@@ -21,22 +22,18 @@ export const ICON_PRESETS = [
 
 export const eventsState = {
   enabled: false,
-  templates: [], // [{id, name, regexp, metadataKeys, icon, color, activeDuration}]
+  templates: [], // [{id, name, filter: {query,levels,metadata}, icon, color, activeDuration}]
 };
 
-// Compiled regexp cache: template id -> RegExp | null
-const reCache = new Map();
-
-function compile(tmpl) {
-  if (!reCache.has(tmpl.id)) {
-    try { reCache.set(tmpl.id, new RegExp(tmpl.regexp)); }
-    catch { reCache.set(tmpl.id, null); }
-  }
-  return reCache.get(tmpl.id);
-}
-
-function invalidate(id) {
-  if (id != null) reCache.delete(id); else reCache.clear();
+// Migrate an old-format template (regexp+metadataKeys) to new filter format.
+function migrateTemplate(t) {
+  if (t.filter) return t;
+  return {
+    ...t,
+    filter: { type: 'positive', query: { text: t.regexp || '', caseSensitive: false, regex: true }, levels: [], metadata: [] },
+    regexp: undefined,
+    metadataKeys: undefined,
+  };
 }
 
 // WeakMap: entry element -> matched events array (for applyActiveDurations)
@@ -50,15 +47,17 @@ export function matchAndAnnotate(entry, text) {
 
   const matched = [];
   for (const tmpl of eventsState.templates) {
-    const re = compile(tmpl);
-    if (!re) continue;
-    re.lastIndex = 0;
-    const m = re.exec(text);
-    if (!m) continue;
+    if (!tmpl.filter || ruleIsEmpty(tmpl.filter)) continue;
+    if (!ruleMatches(tmpl.filter, entry)) continue;
+    // Collect metadata from matched structured fields specified in the filter's metadata rows.
     const metadata = {};
-    (tmpl.metadataKeys || []).forEach((k, i) => {
-      if (k) metadata[k] = m[i + 1] ?? '';
-    });
+    if (tmpl.filter.metadata && entry.dataset.fields) {
+      let fields = {};
+      try { fields = JSON.parse(entry.dataset.fields); } catch {}
+      for (const m of tmpl.filter.metadata) {
+        if (m.key && m.key in fields) metadata[m.key] = String(fields[m.key]);
+      }
+    }
     matched.push({
       name: tmpl.name,
       icon: tmpl.icon ?? '',
@@ -234,7 +233,9 @@ export function initEvents() {
     if (!raw) return;
     const data = JSON.parse(raw);
     eventsState.enabled = Boolean(data.enabled);
-    eventsState.templates = Array.isArray(data.templates) ? data.templates : [];
+    eventsState.templates = Array.isArray(data.templates)
+      ? data.templates.map(migrateTemplate)
+      : [];
   } catch {}
   syncBodyClass();
 }
@@ -343,7 +344,7 @@ export function openEventsDialog(btn) {
       nameEl.textContent = t.name;
       const reEl = document.createElement('span');
       reEl.className = 'events-item-re';
-      reEl.textContent = t.regexp;
+      reEl.textContent = t.filter ? ruleSummary(t.filter) : '';
       info.appendChild(nameEl);
       info.appendChild(reEl);
 
@@ -357,7 +358,6 @@ export function openEventsDialog(btn) {
       delBtn.textContent = '×';
       delBtn.addEventListener('click', () => {
         eventsState.templates = eventsState.templates.filter(x => x.id !== t.id);
-        invalidate(t.id);
         if (editingId === t.id) { editingId = null; formEl.innerHTML = ''; }
         notifyChanged();
         renderList();
@@ -373,7 +373,7 @@ export function openEventsDialog(btn) {
 
   function showForm(tmpl) {
     const isNew = !tmpl;
-    const d = tmpl || { name: '', regexp: '', metadataKeys: [], icon: '●', color: '#4ec9b0', activeDuration: 0 };
+    const d = tmpl || { name: '', filter: null, icon: '●', color: '#4ec9b0', activeDuration: 0 };
     formEl.innerHTML = '';
 
     const fhdr = document.createElement('div');
@@ -405,27 +405,13 @@ export function openEventsDialog(btn) {
     nameInput.placeholder = 'e.g. Request sent';
     nameRow.appendChild(nameInput);
 
-    const reRow = addRow('Regexp');
-    const reInput = inp();
-    reInput.value = d.regexp;
-    reInput.placeholder = 'e.g. Sent to client ([0-9]+)';
-    reInput.className += ' events-re-input';
-    reInput.spellcheck = false;
-    reRow.appendChild(reInput);
-
-    const reErr = document.createElement('div');
-    reErr.className = 'events-re-err';
-    formEl.appendChild(reErr);
-    reInput.addEventListener('input', () => {
-      try { new RegExp(reInput.value); reErr.textContent = ''; reInput.classList.remove('invalid'); }
-      catch { reErr.textContent = 'Invalid regexp'; reInput.classList.add('invalid'); }
-    });
-
-    const keysRow = addRow('Keys');
-    const keysInput = inp();
-    keysInput.value = (d.metadataKeys || []).join(', ');
-    keysInput.placeholder = 'key1, key2, … (one per capture group)';
-    keysRow.appendChild(keysInput);
+    // Filter compose (positive-only, embedded — no submit button)
+    const filterLabel = document.createElement('div');
+    filterLabel.className = 'events-form-hdr events-form-filter-lbl';
+    filterLabel.textContent = 'Match';
+    formEl.appendChild(filterLabel);
+    const compose = buildFilterCompose({ showType: false, initialRule: d.filter || null });
+    formEl.appendChild(compose.el);
 
     // Icon picker
     let selectedIcon = d.icon ?? '';
@@ -525,27 +511,24 @@ export function openEventsDialog(btn) {
 
     saveBtn.addEventListener('click', () => {
       const name = nameInput.value.trim();
-      const regexp = reInput.value.trim();
-      if (!name || !regexp) return;
-      try { new RegExp(regexp); } catch { return; }
+      if (!name) return;
+      const filter = compose.getRule();
 
       let activeDuration = 0;
       if (durSel.value === '-1') activeDuration = -1;
       else if (durSel.value === 'custom') activeDuration = Math.max(1, parseInt(durInput.value, 10) || 1);
 
-      const metadataKeys = keysInput.value.split(',').map(s => s.trim()).filter(Boolean);
       const icon = selectedIcon;
       const color = colorInput.value;
 
       if (isNew) {
         const id = crypto.randomUUID();
-        eventsState.templates.push({ id, name, regexp, metadataKeys, icon, color, activeDuration });
+        eventsState.templates.push({ id, name, filter, icon, color, activeDuration });
         if (!eventsState.enabled) { eventsState.enabled = true; enableCb.checked = true; }
       } else {
         const idx = eventsState.templates.findIndex(t => t.id === editingId);
         if (idx >= 0) {
-          invalidate(eventsState.templates[idx].id);
-          eventsState.templates[idx] = { ...eventsState.templates[idx], name, regexp, metadataKeys, icon, color, activeDuration };
+          eventsState.templates[idx] = { ...eventsState.templates[idx], name, filter, icon, color, activeDuration };
         }
       }
       editingId = null;

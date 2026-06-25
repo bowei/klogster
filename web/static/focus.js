@@ -1,7 +1,9 @@
 // Global focus state — applied across all panels simultaneously.
+import { ruleMatches, ruleIsEmpty, ruleSummary, buildFilterCompose } from './filter.js';
+
 export const focusState = {
   active: false,
-  patterns: [],   // [{pattern: string, re: RegExp|null}]
+  filters: [],  // array of filter rules (always positive — no type field needed)
   contextEnabled: false,
   contextType: 'line',
   contextAmount: 3,
@@ -17,7 +19,7 @@ function notifyChanged() {
 
 function updateFocusBtn() {
   if (!focusBtn) return;
-  const n = focusState.patterns.length;
+  const n = focusState.filters.length;
   if (focusState.active && n > 0) {
     focusBtn.textContent = `focus (${n})`;
     focusBtn.classList.add('active');
@@ -27,14 +29,25 @@ function updateFocusBtn() {
   }
 }
 
-export function lineMatchesFocus(text) {
-  return focusState.patterns.some(p => p.re && p.re.test(text));
+// Returns true if the entry matches any active focus filter.
+export function entryMatchesFocus(entry) {
+  return focusState.filters.some(f => ruleMatches(f, entry));
 }
 
+// Build a combined highlight regex from query.text of all filters.
+// Used to highlight matching text in focused lines.
 export function buildFocusHighlightRe() {
-  const valid = focusState.patterns.filter(p => p.re);
-  if (!valid.length) return null;
-  return new RegExp(valid.map(p => `(?:${p.pattern})`).join('|'), 'gi');
+  const parts = [];
+  for (const f of focusState.filters) {
+    if (!f.query || !f.query.text) continue;
+    if (f.query.regex) {
+      try { new RegExp(f.query.text); parts.push(`(?:${f.query.text})`); } catch {}
+    } else {
+      parts.push(`(?:${f.query.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`);
+    }
+  }
+  if (!parts.length) return null;
+  return new RegExp(parts.join('|'), 'gi');
 }
 
 export function openFocusDialog(btn, initialPattern = '') {
@@ -55,34 +68,33 @@ export function openFocusDialog(btn, initialPattern = '') {
   header.className = 'focus-dialog-header';
   header.textContent = 'Focus';
 
-  // Pattern list
+  // Filter rule list
   const listEl = document.createElement('div');
   listEl.className = 'focus-list';
 
   function renderList() {
     listEl.innerHTML = '';
-    if (focusState.patterns.length === 0) {
+    if (focusState.filters.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'focus-empty';
       empty.textContent = 'No patterns yet';
       listEl.appendChild(empty);
       return;
     }
-    focusState.patterns.forEach((fp, i) => {
+    focusState.filters.forEach((f, i) => {
       const item = document.createElement('div');
       item.className = 'focus-item';
 
       const pat = document.createElement('span');
-      pat.className = 'focus-item-pattern' + (fp.re ? '' : ' focus-item-pattern-invalid');
-      pat.textContent = fp.pattern;
-      pat.title = fp.re ? fp.pattern : `Invalid regexp: ${fp.pattern}`;
+      pat.className = 'focus-item-pattern';
+      pat.textContent = ruleSummary(f);
 
       const removeBtn = document.createElement('button');
       removeBtn.className = 'focus-remove';
-      removeBtn.textContent = '×';
+      removeBtn.textContent = '\xd7';
       removeBtn.addEventListener('click', () => {
-        focusState.patterns.splice(i, 1);
-        focusState.active = focusState.patterns.length > 0;
+        focusState.filters.splice(i, 1);
+        focusState.active = focusState.filters.length > 0;
         updateFocusBtn();
         notifyChanged();
         renderList();
@@ -95,62 +107,21 @@ export function openFocusDialog(btn, initialPattern = '') {
     });
   }
 
-  // Add row
-  const addRow = document.createElement('div');
-  addRow.className = 'focus-add-row';
-
-  const addInputs = document.createElement('div');
-  addInputs.className = 'focus-add-inputs';
-
-  const patInput = document.createElement('input');
-  patInput.type = 'text';
-  patInput.className = 'focus-pattern-input';
-  patInput.placeholder = 'regexp to match…';
-  patInput.spellcheck = false;
-
-  const addBtn = document.createElement('button');
-  addBtn.className = 'focus-add-btn';
-  addBtn.textContent = 'Add';
-
-  const errEl = document.createElement('span');
-  errEl.className = 'focus-pat-err';
-
-  addInputs.appendChild(patInput);
-  addInputs.appendChild(addBtn);
-  addRow.appendChild(addInputs);
-  addRow.appendChild(errEl);
-
-  function doAdd() {
-    const raw = patInput.value.trim();
-    errEl.textContent = '';
-    if (!raw) return;
-    let re = null;
-    try {
-      re = new RegExp(raw, 'i');
-    } catch {
-      errEl.textContent = 'Invalid regexp';
-      return;
-    }
-    if (focusState.patterns.some(p => p.pattern === raw)) {
-      patInput.value = '';
-      patInput.focus();
-      return;
-    }
-    focusState.patterns.push({ pattern: raw, re });
-    focusState.active = true;
-    updateFocusBtn();
-    notifyChanged();
-    renderList();
-    updateStatus();
-    patInput.value = '';
-    patInput.focus();
-  }
-
-  addBtn.addEventListener('click', doAdd);
-  patInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') doAdd();
-    if (e.key === 'Escape') { dialog.remove(); activeFocusDialog = null; }
+  // Compose form (positive-only — no type selector)
+  const compose = buildFilterCompose({
+    showType: false,
+    onAdd(rule) {
+      if (focusState.filters.some(f => ruleSummary(f) === ruleSummary(rule))) return;
+      focusState.filters.push(rule);
+      focusState.active = true;
+      updateFocusBtn();
+      notifyChanged();
+      renderList();
+      updateStatus();
+    },
+    addLabel: 'Add',
   });
+  compose.el.addEventListener('filter:escape', () => { dialog.remove(); activeFocusDialog = null; });
 
   // Context row
   const ctxRow = document.createElement('div');
@@ -221,7 +192,7 @@ export function openFocusDialog(btn, initialPattern = '') {
 
   dialog.appendChild(header);
   dialog.appendChild(listEl);
-  dialog.appendChild(addRow);
+  dialog.appendChild(compose.el);
   dialog.appendChild(ctxRow);
   dialog.appendChild(statusEl);
 
@@ -238,7 +209,7 @@ export function openFocusDialog(btn, initialPattern = '') {
   }
 
   function updateStatus() {
-    if (!focusState.active || focusState.patterns.length === 0) {
+    if (!focusState.active || focusState.filters.length === 0) {
       statusEl.textContent = 'No active focus';
       return;
     }
@@ -259,14 +230,13 @@ export function openFocusDialog(btn, initialPattern = '') {
   setTimeout(() => document.addEventListener('mousedown', onOutside, true), 0);
 
   renderList();
-  if (initialPattern) patInput.value = initialPattern;
-  patInput.focus();
+  if (initialPattern) compose.setQuery(initialPattern); else compose.focus();
   updateStatus();
 }
 
 export function openFocusDialogWithPattern(pattern) {
   if (activeFocusDialog) {
-    const input = activeFocusDialog.querySelector('.focus-pattern-input');
+    const input = activeFocusDialog.querySelector('.filter-pattern-input');
     if (input) { input.value = pattern; input.focus(); }
     return;
   }
@@ -296,16 +266,18 @@ export function restoreFocusState(saved) {
   focusState.contextAmount = saved.contextAmount ?? 3;
   focusState.contextDirection = saved.contextDirection || 'around';
 
-  // Support old format (saved.pattern string) and new format (saved.patterns array)
-  const patternStrings = Array.isArray(saved.patterns)
-    ? saved.patterns
-    : (saved.pattern ? [saved.pattern] : []);
-
-  focusState.patterns = patternStrings.map(pat => {
-    let re = null;
-    try { re = new RegExp(pat, 'i'); } catch {}
-    return { pattern: pat, re };
-  });
-  focusState.active = Boolean(saved.active) && focusState.patterns.length > 0;
+  if (Array.isArray(saved.filters)) {
+    // New format
+    focusState.filters = saved.filters.filter(f => f && !ruleIsEmpty(f));
+  } else {
+    // Migrate old format: patterns: [string, ...]
+    const patternStrings = Array.isArray(saved.patterns)
+      ? saved.patterns
+      : (saved.pattern ? [saved.pattern] : []);
+    focusState.filters = patternStrings
+      .filter(Boolean)
+      .map(pat => ({ type: 'positive', query: { text: pat, caseSensitive: false, regex: true }, levels: [], metadata: [] }));
+  }
+  focusState.active = Boolean(saved.active) && focusState.filters.length > 0;
   updateFocusBtn();
 }

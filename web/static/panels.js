@@ -1,6 +1,7 @@
 import { attachScrollSync, showCrosshairs, clearCrosshairs } from './timeline.js';
-import { focusState, updateFocusCount, lineMatchesFocus, buildFocusHighlightRe } from './focus.js';
+import { focusState, updateFocusCount, entryMatchesFocus, buildFocusHighlightRe } from './focus.js';
 import { eventsState, matchAndAnnotate, clearEntryEvents, applyActiveDurations, rebuildActiveRanges } from './events.js';
+import { ruleMatches, ruleIsEmpty, ruleSummary, FILTER_LEVELS, buildFilterCompose } from './filter.js';
 
 const MAX_LINES = 5000;
 const PRUNE_TO = 4000;
@@ -40,53 +41,6 @@ setInterval(() => {
     for (const tab of pg.tabs) updateFooter(tab);
   }
 }, 1000);
-
-function textMatches(text, query) {
-  if (!query.text) return true;
-  if (query.regex) {
-    try {
-      const re = new RegExp(query.text, query.caseSensitive ? '' : 'i');
-      return re.test(text);
-    } catch { return false; }
-  }
-  return query.caseSensitive
-    ? text.includes(query.text)
-    : text.toLowerCase().includes(query.text.toLowerCase());
-}
-
-function ruleMatches(rule, entry) {
-  const rawText = entry.dataset.rawText || entry.querySelector('.log-body')?.textContent || '';
-  if (rule.query && rule.query.text && !textMatches(rawText, rule.query)) return false;
-  if (rule.levels && rule.levels.length > 0) {
-    const lvl = entry.dataset.level || 'OTHER';
-    if (!rule.levels.includes(lvl)) return false;
-  }
-  if (rule.metadata && rule.metadata.length > 0) {
-    let fields = null;
-    if (entry.dataset.fields) {
-      try { fields = JSON.parse(entry.dataset.fields); } catch { fields = {}; }
-    } else {
-      fields = {};
-    }
-    for (const m of rule.metadata) {
-      if (!m.key && !m.value) continue;
-      if (m.key) {
-        if (!(m.key in fields)) return false;
-        if (m.value && !textMatches(String(fields[m.key]), { text: m.value, caseSensitive: m.caseSensitive, regex: m.regex })) return false;
-      } else {
-        const anyMatch = Object.values(fields).some(v => textMatches(String(v), { text: m.value, caseSensitive: m.caseSensitive, regex: m.regex }));
-        if (!anyMatch) return false;
-      }
-    }
-  }
-  return true;
-}
-
-function ruleIsEmpty(rule) {
-  return (!rule.query || !rule.query.text) &&
-    (!rule.levels || rule.levels.length === 0) &&
-    (!rule.metadata || rule.metadata.every(m => !m.key && !m.value));
-}
 
 function entryVisible(filters, entry) {
   if (!filters || filters.length === 0) return true;
@@ -374,8 +328,7 @@ function applyPanelFocus(tab) {
 
   const matchIdxs = [];
   entries.forEach((entry, i) => {
-    const text = entry.querySelector('.log-body')?.textContent ?? entry.textContent;
-    if (lineMatchesFocus(text)) matchIdxs.push(i);
+    if (entryMatchesFocus(entry)) matchIdxs.push(i);
   });
   const matchSet = new Set(matchIdxs);
 
@@ -462,23 +415,6 @@ export function applyFocusToAll() {
 
 document.addEventListener('focus:count-request', () => countFocusMatches());
 
-const FILTER_LEVELS = ['DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL', 'TRACE'];
-
-function ruleSummary(rule) {
-  const parts = [];
-  if (rule.query && rule.query.text) {
-    const flags = [rule.query.caseSensitive ? 'Aa' : '', rule.query.regex ? '.*' : ''].filter(Boolean).join(' ');
-    parts.push(`"${rule.query.text}"${flags ? ` (${flags})` : ''}`);
-  }
-  if (rule.levels && rule.levels.length > 0) parts.push(`level: ${rule.levels.join(',')}`);
-  if (rule.metadata) {
-    for (const m of rule.metadata) {
-      if (m.key || m.value) parts.push(`${m.key || '*'}=${m.value || '*'}`);
-    }
-  }
-  return parts.join(' \xb7 ') || '(empty)';
-}
-
 function updateFilterBtn(tab) {
   const n = tab.filters.filter(f => !ruleIsEmpty(f)).length;
   tab.filterBtn.textContent = n > 0 ? `filter (${n})` : 'filter';
@@ -554,224 +490,21 @@ function openFilterDialog(tab, initialQueryText = '') {
     });
   }
 
-  // ── Compose form ─────────────────────────────────────────────────────────
-  const form = document.createElement('div');
-  form.className = 'filter-compose';
-
-  // Type toggle row
-  const typeRow = document.createElement('div');
-  typeRow.className = 'filter-type-row';
-  const typeSelect = document.createElement('select');
-  typeSelect.className = 'filter-type-select';
-  [['positive', '+ show only matching'], ['negative', '− hide matching']].forEach(([v, t]) => {
-    const opt = document.createElement('option');
-    opt.value = v;
-    opt.textContent = t;
-    typeSelect.appendChild(opt);
+  // ── Compose form (shared component) ──────────────────────────────────────
+  const compose = buildFilterCompose({
+    showType: true,
+    onAdd(rule) {
+      tab.filters.push(rule);
+      applyFilters(tab);
+      renderList();
+      notifyStateChanged();
+    },
   });
-  typeRow.appendChild(typeSelect);
-  form.appendChild(typeRow);
-
-  // Query row
-  const formState = {
-    query: { text: '', caseSensitive: false, regex: false },
-    levels: [],
-    metadata: [],
-  };
-
-  const queryRow = document.createElement('div');
-  queryRow.className = 'filter-query-row';
-  const queryLabel = document.createElement('span');
-  queryLabel.className = 'filter-row-label';
-  queryLabel.textContent = 'Query';
-  const queryInput = document.createElement('input');
-  queryInput.type = 'text';
-  queryInput.className = 'filter-pattern-input';
-  queryInput.placeholder = 'substring…';
-  queryInput.spellcheck = false;
-
-  const btnCase = document.createElement('button');
-  btnCase.className = 'filter-toggle-btn';
-  btnCase.title = 'Case sensitive';
-  btnCase.textContent = 'Aa';
-  btnCase.addEventListener('click', () => {
-    formState.query.caseSensitive = !formState.query.caseSensitive;
-    btnCase.classList.toggle('active', formState.query.caseSensitive);
-  });
-
-  const btnRegex = document.createElement('button');
-  btnRegex.className = 'filter-toggle-btn';
-  btnRegex.title = 'Regular expression';
-  btnRegex.textContent = '.*';
-  btnRegex.addEventListener('click', () => {
-    formState.query.regex = !formState.query.regex;
-    btnRegex.classList.toggle('active', formState.query.regex);
-    queryInput.placeholder = formState.query.regex ? 'regexp…' : 'substring…';
-  });
-
-  queryRow.appendChild(queryLabel);
-  queryRow.appendChild(queryInput);
-  queryRow.appendChild(btnCase);
-  queryRow.appendChild(btnRegex);
-  form.appendChild(queryRow);
-
-  // Level row
-  const levelRow = document.createElement('div');
-  levelRow.className = 'filter-level-row';
-  const levelLabel = document.createElement('span');
-  levelLabel.className = 'filter-row-label';
-  levelLabel.textContent = 'Level';
-  levelRow.appendChild(levelLabel);
-
-  const levelChips = document.createElement('div');
-  levelChips.className = 'filter-level-chips';
-
-  FILTER_LEVELS.forEach(lvl => {
-    const chip = document.createElement('button');
-    chip.className = 'filter-level-chip';
-    chip.textContent = lvl;
-    chip.dataset.level = lvl;
-    chip.addEventListener('click', () => {
-      const idx = formState.levels.indexOf(lvl);
-      if (idx >= 0) {
-        formState.levels.splice(idx, 1);
-        chip.classList.remove('active');
-      } else {
-        formState.levels.push(lvl);
-        chip.classList.add('active');
-      }
-    });
-    levelChips.appendChild(chip);
-  });
-
-  levelRow.appendChild(levelChips);
-  form.appendChild(levelRow);
-
-  // Metadata rows
-  const metaSection = document.createElement('div');
-  metaSection.className = 'filter-meta-section';
-  const metaLabel = document.createElement('span');
-  metaLabel.className = 'filter-row-label';
-  metaLabel.textContent = 'Fields';
-  metaSection.appendChild(metaLabel);
-
-  const metaList = document.createElement('div');
-  metaList.className = 'filter-meta-list';
-
-  function addMetaRow(key = '', value = '', caseSensitive = false, regex = false) {
-    const m = { key, value, caseSensitive, regex };
-    formState.metadata.push(m);
-    const row = document.createElement('div');
-    row.className = 'filter-meta-row';
-
-    const keyInput = document.createElement('input');
-    keyInput.type = 'text';
-    keyInput.className = 'filter-meta-input';
-    keyInput.placeholder = 'key';
-    keyInput.spellcheck = false;
-    keyInput.value = key;
-    keyInput.addEventListener('input', () => { m.key = keyInput.value; });
-
-    const valInput = document.createElement('input');
-    valInput.type = 'text';
-    valInput.className = 'filter-meta-input';
-    valInput.placeholder = 'value';
-    valInput.spellcheck = false;
-    valInput.value = value;
-    valInput.addEventListener('input', () => { m.value = valInput.value; });
-
-    const mBtnCase = document.createElement('button');
-    mBtnCase.className = 'filter-toggle-btn';
-    mBtnCase.title = 'Case sensitive';
-    mBtnCase.textContent = 'Aa';
-    mBtnCase.classList.toggle('active', caseSensitive);
-    mBtnCase.addEventListener('click', () => {
-      m.caseSensitive = !m.caseSensitive;
-      mBtnCase.classList.toggle('active', m.caseSensitive);
-    });
-
-    const mBtnRegex = document.createElement('button');
-    mBtnRegex.className = 'filter-toggle-btn';
-    mBtnRegex.title = 'Regular expression';
-    mBtnRegex.textContent = '.*';
-    mBtnRegex.classList.toggle('active', regex);
-    mBtnRegex.addEventListener('click', () => {
-      m.regex = !m.regex;
-      mBtnRegex.classList.toggle('active', m.regex);
-    });
-
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'filter-remove';
-    removeBtn.textContent = '\xd7';
-    removeBtn.addEventListener('click', () => {
-      const idx = formState.metadata.indexOf(m);
-      if (idx >= 0) formState.metadata.splice(idx, 1);
-      row.remove();
-    });
-
-    row.appendChild(keyInput);
-    row.appendChild(valInput);
-    row.appendChild(mBtnCase);
-    row.appendChild(mBtnRegex);
-    row.appendChild(removeBtn);
-    metaList.appendChild(row);
-    return keyInput;
-  }
-
-  const addMetaBtn = document.createElement('button');
-  addMetaBtn.className = 'filter-add-meta-btn';
-  addMetaBtn.textContent = '+ add field';
-  addMetaBtn.addEventListener('click', () => {
-    const input = addMetaRow();
-    input.focus();
-  });
-
-  metaSection.appendChild(metaList);
-  metaSection.appendChild(addMetaBtn);
-  form.appendChild(metaSection);
-
-  // Add filter button
-  const addBtn = document.createElement('button');
-  addBtn.className = 'filter-add-btn';
-  addBtn.textContent = 'Add filter';
-
-  function doAdd() {
-    formState.query.text = queryInput.value.trim();
-    const rule = {
-      type: typeSelect.value,
-      query: { ...formState.query },
-      levels: [...formState.levels],
-      metadata: formState.metadata.filter(m => m.key || m.value).map(m => ({ ...m })),
-    };
-    if (ruleIsEmpty(rule)) return;
-    tab.filters.push(rule);
-    applyFilters(tab);
-    renderList();
-    notifyStateChanged();
-    // Reset form
-    queryInput.value = '';
-    formState.query = { text: '', caseSensitive: false, regex: false };
-    btnCase.classList.remove('active');
-    btnRegex.classList.remove('active');
-    queryInput.placeholder = 'substring…';
-    formState.levels = [];
-    levelChips.querySelectorAll('.filter-level-chip').forEach(c => c.classList.remove('active'));
-    formState.metadata = [];
-    metaList.innerHTML = '';
-    queryInput.focus();
-  }
-
-  addBtn.addEventListener('click', doAdd);
-  queryInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') doAdd();
-    if (e.key === 'Escape') { dialog.remove(); activeFilterDialog = null; }
-  });
-
-  form.appendChild(addBtn);
+  compose.el.addEventListener('filter:escape', () => { dialog.remove(); activeFilterDialog = null; });
 
   dialog.appendChild(header);
   dialog.appendChild(listEl);
-  dialog.appendChild(form);
+  dialog.appendChild(compose.el);
   toolbar.appendChild(dialog);
 
   function onOutside(e) {
@@ -784,8 +517,7 @@ function openFilterDialog(tab, initialQueryText = '') {
   setTimeout(() => document.addEventListener('mousedown', onOutside, true), 0);
 
   renderList();
-  if (initialQueryText) queryInput.value = initialQueryText;
-  queryInput.focus();
+  if (initialQueryText) compose.setQuery(initialQueryText); else compose.focus();
 }
 
 export function findTabContaining(el) {
@@ -1315,10 +1047,8 @@ export function appendLines(messages) {
       tab.el.classList.add('has-level');
     }
 
-    const bodyEl = entry.querySelector('.log-body');
-    const text = bodyEl ? bodyEl.textContent : msg.message || '';
     const panelVisible = entryVisible(tab.filters, entry);
-    const matches = focusState.active && lineMatchesFocus(text);
+    const matches = focusState.active && entryMatchesFocus(entry);
     const focusVisible = !focusState.active || matches;
     if (!panelVisible || !focusVisible) {
       entry.style.display = 'none';
