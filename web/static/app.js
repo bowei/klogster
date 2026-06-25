@@ -341,6 +341,7 @@ function init() {
   document.addEventListener('focus:changed', () => {
     applyFocusToAll();
     maybeSaveState();
+    refreshTimelineNow();
   });
   document.addEventListener('panels:state-changed', () => maybeSaveState());
 

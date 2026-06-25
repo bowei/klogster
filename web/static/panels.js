@@ -1262,6 +1262,7 @@ export function getAllEvents() {
     for (const tab of pg.tabs) {
       for (const entry of tab.logEl.children) {
         if (!entry.dataset.eventData) continue;
+        if (entry.style.display === 'none') continue;
         const ts = entry.dataset.ts;
         if (!ts) continue;
         const tsMs = new Date(ts).getTime();
