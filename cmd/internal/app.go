@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -74,7 +75,16 @@ func Run() {
 		httpServer.Shutdown(context.Background()) //nolint:errcheck
 	}()
 
-	log.Printf("klogster UI at http://%s", *serve)
+	host, port, err := net.SplitHostPort(*serve)
+	if err == nil && host == "" {
+		hostName, err := os.Hostname()
+		if err == nil {
+			log.Printf("klogster UI at http://%s:%s", hostName, port)
+		}
+		log.Printf("klogster UI at http://%s", *serve)
+	} else {
+		log.Printf("klogster UI at http://%s", *serve)
+	}
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("http server: %v", err)
 	}
