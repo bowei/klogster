@@ -1,5 +1,6 @@
 import { openPanel, closePanel, addPanelGroup, appendLines, prependLines, getPanelIds, applyFocusToAll, getSerializableState, restoreFilters, setActivePanelByKey, toggleMergedView } from './panels.js';
 import { openFocusDialog, focusState, restoreFocusState } from './focus.js';
+import { initEvents, openEventsDialog, updateEventsBtn } from './events.js';
 import { saveState, loadState } from './state.js';
 import { initSelectionMenu } from './selection-menu.js';
 
@@ -316,6 +317,13 @@ function init() {
   dot.id = 'conn-status';
   dot.title = 'WebSocket connection';
   header.appendChild(dot);
+
+  initEvents();
+
+  const eventsBtn = document.getElementById('btn-events');
+  updateEventsBtn(eventsBtn);
+  eventsBtn.addEventListener('click', e => openEventsDialog(e.currentTarget));
+  document.addEventListener('events:changed', () => updateEventsBtn(eventsBtn));
 
   document.getElementById('btn-focus').addEventListener('click', e => {
     openFocusDialog(e.currentTarget);

@@ -140,35 +140,7 @@ For logging formats that are structured fields should be display like this:
 
 ## UI
 
-The UI works like a multi-pane editor (VS Code style).
-
-**Panel columns** are the vertical split panes. Each column holds one or more
-tabs. Only the active tab's log is visible in its column; all other tabs
-continue streaming in the background and become visible when clicked.
-
-**Opening logs:**
-* Click **＋ Log** to open the log browser. Clicking a log source opens it as
-  a new tab in the currently focused column. If no columns are open, one is
-  created automatically.
-* Click **＋ Panel** to add a new empty column. The new column becomes the
-  focus target, so the next log source you click opens there.
-
-**Tabs:**
-* Click a tab to switch to it within its column.
-* Drag a tab to reorder it within its column, or drop it onto another
-  column's tab bar to move it there.
-* Close a tab with **✕**. When the last tab in a column is closed, the column
-  is removed.
-
-**Merged view:**
-* Click **⊕** (right side of the tab bar) to combine all tabs in a column into a
-  single, timestamp-sorted log stream. Each line is labeled with its source
-  pod/container. Per-tab filters remain active in merged view.
-* Click **⊕** again (or click any tab) to return to the normal single-tab view.
-
-**State persistence:** the URL hash encodes the full layout — which pods are
-open, which column they're in, the active tab per column, per-tab filters, and
-focus state. Copy or bookmark the URL to restore the exact view on reload.
+See [ui.md](ui.md) for details on the UI.
 
 ### Pause / Resume
 
@@ -206,3 +178,19 @@ Focus options:
 Hover over a timestamp in any panel to see a crosshair drawn across all other
 panels at the equivalent point in time. Timestamps that fall outside the
 current viewport are shown as edge markers.
+
+### Event templates
+
+The **Events** button opens the event template manager. Each template pairs a
+regular expression with a colored icon. When a template matches a log line, the
+icon appears in a fixed-width column to the left of the log level across every
+line in the panel — matched lines show their icon, unmatched lines leave the
+column blank. Hovering an icon shows the template name and any values captured
+by the regexp's capture groups.
+
+Templates with an **active duration** also highlight subsequent log lines with a
+colored left-border for a configurable window after the match: useful for
+marking the duration of a request, a deployment, or any other interval that
+starts with a known log event.
+
+Templates are persisted in `localStorage` and reapplied whenever the page is reloaded.

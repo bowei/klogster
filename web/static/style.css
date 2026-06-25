@@ -1362,3 +1362,346 @@ mark.focus-match {
   cursor: pointer;
 }
 .sel-menu-item:hover { background: var(--bg3); }
+
+/* ── Events button ── */
+#btn-events {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+#btn-events:hover { color: var(--text); border-color: var(--text-dim); }
+#btn-events.active { color: var(--ts-color); border-color: var(--ts-color); }
+
+/* ── Event column in log entries ── */
+.log-event-col {
+  display: none;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  width: 3ch;
+  min-width: 3ch;
+  flex-shrink: 0;
+  user-select: none;
+}
+/* Show the column (empty or not) on every line when event templates are active */
+.events-active .log-event-col {
+  display: inline-flex;
+}
+
+.log-event-icon {
+  font-size: 12px;
+  line-height: 1;
+  cursor: default;
+}
+
+.log-event-more {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1;
+}
+
+/* Active-duration range highlight */
+.log-entry--active {
+  box-shadow: inset 3px 0 0 var(--event-active-color, #4ec9b0);
+}
+
+/* ── Event tooltip ── */
+.event-tooltip {
+  position: fixed;
+  z-index: 600;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+  max-width: 260px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+  pointer-events: none;
+  display: none;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+.event-tooltip.visible { display: block; }
+
+.event-tip-name {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 5px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.event-tip-table { border-collapse: collapse; width: 100%; }
+
+.event-tip-key {
+  color: var(--text-dim);
+  padding-right: 10px;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.event-tip-val {
+  color: var(--text);
+  word-break: break-all;
+}
+
+/* ── Events dialog ── */
+.events-dialog {
+  position: fixed;
+  z-index: 300;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  min-width: 380px;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+.events-dialog-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.events-enable-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text);
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.events-list {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.events-empty {
+  padding: 10px 10px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.events-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+.events-item:last-child { border-bottom: none; }
+.events-item--editing { background: var(--bg3); }
+
+.events-item-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  width: 1.8ch;
+  text-align: center;
+  user-select: none;
+}
+
+.events-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.events-item-name {
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.events-item-re {
+  color: var(--text-dim);
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.events-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.events-btn:hover { color: var(--text); background: var(--bg3); }
+.events-btn--del { font-size: 15px; line-height: 1; }
+
+.events-add-btn {
+  display: block;
+  width: calc(100% - 20px);
+  margin: 6px 10px;
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  text-align: left;
+}
+.events-add-btn:hover { color: var(--text); border-color: var(--text-dim); }
+
+/* Form */
+.events-form { border-top: 1px solid var(--border); }
+
+.events-form-hdr {
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  background: var(--bg3);
+}
+
+.events-form-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-bottom: 1px solid var(--border);
+  min-height: 28px;
+}
+
+.events-form-lbl {
+  font-size: 10px;
+  color: var(--text-dim);
+  width: 5ch;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.events-input {
+  flex: 1;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  min-width: 0;
+}
+.events-input:focus { outline: none; border-color: var(--accent); }
+.events-input.invalid { border-color: #f44747; }
+.events-input::placeholder { color: var(--text-dim); }
+
+.events-re-input { font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; }
+
+.events-re-err {
+  padding: 1px 10px 3px;
+  font-size: 10px;
+  color: #f44747;
+  min-height: 14px;
+}
+
+/* Icon picker */
+.events-form-picker-row {
+  align-items: flex-start;
+  padding: 5px 10px;
+}
+
+.events-icon-picker {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 3px;
+  flex: 1;
+}
+
+.events-icon-option {
+  background: none;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 3px 0;
+  text-align: center;
+  user-select: none;
+  transition: border-color 0.1s, background 0.1s;
+}
+.events-icon-option:hover { background: var(--bg3); border-color: var(--border); }
+.events-icon-option.selected { border-color: var(--accent); background: var(--bg3); }
+
+.events-color-input {
+  width: 30px;
+  height: 22px;
+  padding: 1px 2px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  border-radius: 3px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.events-select {
+  flex: 1;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.events-dur-input { max-width: 8ch; flex: 0 0 auto; text-align: right; }
+
+.events-form-btns {
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px;
+}
+
+.events-save-btn {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.events-save-btn:hover { background: var(--accent-hover); }
+
+.events-cancel-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.events-cancel-btn:hover { color: var(--text); border-color: var(--text-dim); }

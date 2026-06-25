@@ -172,6 +172,60 @@ When log text is selected, after 100 ms, show a kebab icon next to the selected 
 
 ---
 
+## Events
+
+The **Events** button in the header opens the event template manager. Event templates match log lines by regular expression and annotate them with a colored icon in the log view.
+
+### Event templates
+
+Each template has:
+
+- **Name** — a human-readable label shown in the icon tooltip.
+- **Regexp** — a regular expression tested against the full raw log line. Capture groups become named metadata values.
+- **Keys** — comma-separated names for each capture group, in order. For example, a regexp `Sent to client ([0-9]+)` with key `client_id` captures the client ID from matching lines.
+- **Icon** — a visual marker shown in the log for matching lines. Choose from the built-in picker (colored circles `●`, stars `★`, or exclamation marks `!` in eight colors, plus a row of emoji) or fine-tune with the color swatch beneath the grid.
+- **Color** — used for the icon (symbols only; emoji render in their own colors) and for the active-duration border (see below).
+- **Active duration** — how long after the match to highlight subsequent lines:
+  - *None* (default) — icon only, no range highlight.
+  - *Until end of log* — all lines after the match are highlighted.
+  - *Custom* — lines within N milliseconds of the match timestamp are highlighted.
+
+### Enabling and disabling
+
+The **Enabled** checkbox at the top of the dialog toggles event processing without modifying the templates. When disabled, no icons are shown and no annotations are applied. When re-enabled, all visible log lines are re-annotated immediately.
+
+### Managing templates
+
+- **+ Add Template** opens an inline form to create a new template. Saving it automatically enables event processing if it was off.
+- **edit** on a listed template opens the same form pre-filled for editing.
+- **×** on a listed template deletes it immediately and removes its annotations from all open panels.
+- Changes take effect immediately: all open log panels are re-scanned and annotated when templates are added, edited, deleted, or when the Enabled toggle changes.
+
+### Event column in the log view
+
+When at least one event template is active, every log line gets a fixed-width event column between the timestamp and the level badge. Lines that match one or more templates show the matching template icons in that column; lines with no match leave the column empty. This keeps all columns aligned regardless of whether a line matched.
+
+Up to three icons are shown per line. If more templates match, a `+N` overflow label appears.
+
+### Icon tooltip
+
+Hovering an event icon shows a small tooltip with:
+
+- The template name in bold.
+- A table of captured metadata keys and the values extracted from that specific line.
+
+### Active-duration highlighting
+
+When a template has an active duration set, lines that fall within the specified time window after a matching line receive a colored left-border highlight in the template's color. This visually brackets the interval that began with the event — for example, the span of a request, a deployment rollout, or a retry window.
+
+For historical lines loaded on panel open, the full range is computed in one pass. For live lines arriving over the WebSocket, ranges are tracked incrementally so newly arriving lines within an active window are highlighted as they appear.
+
+### Persistence
+
+Event templates and the enabled/disabled state are stored in `localStorage` and restored automatically on page load. They are not included in the URL hash, so sharing a URL does not share event templates.
+
+---
+
 ## Themes
 
 Nine color themes are available in the ⚙ settings dialog, each previewed with color swatches:

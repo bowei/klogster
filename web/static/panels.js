@@ -1,5 +1,6 @@
 import { attachScrollSync, showCrosshairs, clearCrosshairs } from './timeline.js';
 import { focusState, updateFocusCount, lineMatchesFocus, buildFocusHighlightRe } from './focus.js';
+import { eventsState, matchAndAnnotate, clearEntryEvents, applyActiveDurations, rebuildActiveRanges } from './events.js';
 
 const MAX_LINES = 5000;
 const PRUNE_TO = 4000;
@@ -606,6 +607,10 @@ function buildLogEntry(ts, message, fields, level) {
   }
   entry.appendChild(tsEl);
 
+  const evColEl = document.createElement('span');
+  evColEl.className = 'log-event-col';
+  entry.appendChild(evColEl);
+
   const lvlEl = document.createElement('span');
   lvlEl.className = 'log-level';
   if (level && level !== 'OTHER') {
@@ -1018,7 +1023,7 @@ export function openPanel(group, ns, pod, container, _onClose) {
     id: tabId, group, ns, pod, container,
     el, logEl, wrapEl, crosshairEl, footerEl, filterBtn,
     lineCount: 0, lastTs: null, lastTsMs: 0, filters: [], hasLevel: false,
-    focusMatchCount: 0,
+    focusMatchCount: 0, activeRanges: [],
   };
 
   pg.tabs.push(tab);
@@ -1091,7 +1096,7 @@ export function appendLines(messages) {
     }
     if (matches) tab.focusMatchCount++;
 
-    tabBatches.get(tab.id).entries.push({ entry, ts });
+    tabBatches.get(tab.id).entries.push({ entry, ts, rawText: msg.text || msg.message || '' });
   }
 
   for (const { tab, pg, entries } of tabBatches.values()) {
@@ -1103,7 +1108,31 @@ export function appendLines(messages) {
       : true;
 
     const frag = document.createDocumentFragment();
-    for (const { entry, ts } of entries) {
+    for (const { entry, ts, rawText } of entries) {
+      entry.dataset.rawText = rawText.slice(0, 2000);
+
+      // Apply active-duration highlight from prior trigger events
+      const tsMs = ts ? new Date(ts).getTime() : 0;
+      if (tsMs && tab.activeRanges.length) {
+        tab.activeRanges = tab.activeRanges.filter(r => r.endTs === Infinity || r.endTs >= tsMs);
+        if (tab.activeRanges.length) {
+          entry.classList.add('log-entry--active');
+          entry.style.setProperty('--event-active-color', tab.activeRanges[0].color);
+        }
+      }
+
+      // Match event templates and start new active ranges
+      const evs = matchAndAnnotate(entry, rawText);
+      if (evs && tsMs) {
+        for (const ev of evs) {
+          if (ev.activeDuration === 0) continue;
+          const endTs = ev.activeDuration === -1 ? Infinity : tsMs + ev.activeDuration;
+          tab.activeRanges.push({ endTs, color: ev.color || '#4ec9b0' });
+          entry.classList.add('log-entry--active');
+          entry.style.setProperty('--event-active-color', ev.color || '#4ec9b0');
+        }
+      }
+
       frag.appendChild(entry);
       tab.lineCount++;
       if (ts) { tab.lastTs = ts; tab.lastTsMs = new Date(ts).getTime(); }
@@ -1138,6 +1167,9 @@ export function prependLines(group, ns, pod, container, lines) {
   const frag = document.createDocumentFragment();
   for (const line of lines) {
     const entry = buildLogEntry(line.ts || '', line.message || '', line.fields || null, line.level || '');
+    const rawText = line.message || '';
+    entry.dataset.rawText = rawText.slice(0, 2000);
+    matchAndAnnotate(entry, rawText);
     frag.appendChild(entry);
     builtEntries.push(entry);
   }
@@ -1155,6 +1187,9 @@ export function prependLines(group, ns, pod, container, lines) {
     pruneLines(logEl, prunedCount);
     tab.lineCount = PRUNE_TO;
   }
+
+  applyActiveDurations(logEl);
+  rebuildActiveRanges(tab);
 
   if (!tab.lastTs) {
     for (let i = lines.length - 1; i >= 0; i--) {
@@ -1218,3 +1253,19 @@ export function setActivePanelByKey(group, ns, pod, container) {
   const result = getTabByKey(group, ns, pod, container);
   if (result) activateTab(result.pg.id, result.tab.id);
 }
+
+// Recompute all event annotations when templates or enabled state changes.
+document.addEventListener('events:changed', () => {
+  for (const pg of panelGroups) {
+    for (const tab of pg.tabs) {
+      for (const entry of tab.logEl.querySelectorAll('.log-entry')) {
+        clearEntryEvents(entry);
+        const text = entry.dataset.rawText || entry.querySelector('.log-body')?.textContent || '';
+        matchAndAnnotate(entry, text);
+      }
+      tab.activeRanges = [];
+      applyActiveDurations(tab.logEl);
+      rebuildActiveRanges(tab);
+    }
+  }
+});
