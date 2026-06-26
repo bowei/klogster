@@ -1850,8 +1850,8 @@ mark.focus-match {
 }
 
 .events-icon-picker {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: 3px;
 }
 
@@ -1877,16 +1877,26 @@ mark.focus-match {
 .events-icon-option:hover { background: var(--bg3); border-color: var(--border); }
 .events-icon-option.selected { border-color: var(--accent); background: var(--bg3); }
 
-.events-color-input {
-  width: 30px;
-  height: 22px;
-  padding: 1px 2px;
-  border: 1px solid var(--border);
-  background: var(--bg3);
-  border-radius: 3px;
-  cursor: pointer;
-  flex-shrink: 0;
+.events-color-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
 }
+
+.events-color-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  outline-offset: 2px;
+  transition: border-color 0.1s, transform 0.1s;
+}
+.events-color-swatch:hover { transform: scale(1.15); }
+.events-color-swatch.selected { border-color: var(--text); }
 
 .events-select {
   flex: 1;

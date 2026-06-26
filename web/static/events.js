@@ -7,23 +7,13 @@ export function setNavigateCallback(fn) { _navigateCb = fn; }
 
 const STORAGE_KEY = 'klogster:events';
 
-const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#06b6d4', '#ec4899'];
-
-export const ICON_PRESETS = [
-  ...COLORS.map(color => ({ icon: '●', color })),
-  ...COLORS.map(color => ({ icon: '⮕', color })),
-  ...COLORS.map(color => ({ icon: '⬅', color })),
-  ...COLORS.map(color => ({ icon: '■', color })),
-  ...COLORS.map(color => ({ icon: '◆', color })),
-  // Emoji
-  { icon: '🔥', color: '#f97316' },
-  { icon: '⚡', color: '#eab308' },
-  { icon: '⚠️', color: '#f97316' },
-  { icon: '🚨', color: '#ef4444' },
-  { icon: '💡', color: '#eab308' },
-  { icon: '✅', color: '#22c55e' },
-  { icon: '❌', color: '#ef4444' },
+export const COLOR_PALETTE = [
+  '#ef4444', '#f97316', '#eab308', '#22c55e',
+  '#14b8a6', '#3b82f6', '#a855f7', '#ec4899',
+  '#f43f5e', '#94a3b8',
 ];
+
+export const ICON_SHAPES = ['●', '⮕', '⬅', '■', '◆', '🔥', '⚡', '⚠️', '🚨', '💡', '✅', '❌'];
 
 export const eventsState = {
   enabled: false,
@@ -676,13 +666,9 @@ export function openEventsDialog(btn) {
     const compose = buildFilterCompose({ showType: false, initialRule: d.filter || null });
     formEl.appendChild(compose.el);
 
-    // Icon picker
+    // Icon + color pickers
     let selectedIcon = d.icon ?? '';
-
-    // colorInput declared before picker so click handlers can update it
-    const colorInput = inp('color');
-    colorInput.value = d.color || '#ef4444';
-    colorInput.className = 'events-color-input';
+    let selectedColor = d.color || COLOR_PALETTE[0];
 
     const icRow = document.createElement('div');
     icRow.className = 'events-form-row events-form-picker-row';
@@ -708,32 +694,54 @@ export function openEventsDialog(btn) {
 
     const pickerGrid = document.createElement('div');
     pickerGrid.className = 'events-icon-picker';
-    for (const preset of ICON_PRESETS) {
+
+    function updateIconColors() {
+      for (const cell of pickerGrid.children) {
+        const icon = cell.dataset.icon;
+        // Emoji are rendered by the OS font; only colorize plain symbols
+        cell.style.color = /\p{Emoji_Presentation}/u.test(icon) ? '' : selectedColor;
+      }
+    }
+
+    for (const icon of ICON_SHAPES) {
       const cell = document.createElement('button');
       cell.type = 'button';
       cell.className = 'events-icon-option';
-      cell.textContent = preset.icon;
-      cell.style.color = preset.color;
-      cell.title = preset.icon;
-      if (selectedIcon !== '' && preset.icon === selectedIcon && preset.color === colorInput.value) {
-        cell.classList.add('selected');
-      }
+      cell.dataset.icon = icon;
+      cell.textContent = icon;
+      cell.title = icon;
+      if (selectedIcon !== '' && icon === selectedIcon) cell.classList.add('selected');
       cell.addEventListener('click', () => {
-        selectedIcon = preset.icon;
-        colorInput.value = preset.color;
+        selectedIcon = icon;
         noneBtn.classList.remove('selected');
         for (const c of pickerGrid.children) c.classList.remove('selected');
         cell.classList.add('selected');
       });
       pickerGrid.appendChild(cell);
     }
+    updateIconColors();
     pickerWrap.appendChild(pickerGrid);
     icRow.appendChild(icLbl);
     icRow.appendChild(pickerWrap);
 
-    // Color (fine-tune)
+    // Color palette
     const clrRow = addRow('Color');
-    clrRow.appendChild(colorInput);
+    const palette = document.createElement('div');
+    palette.className = 'events-color-palette';
+    for (const hex of COLOR_PALETTE) {
+      const swatch = document.createElement('button');
+      swatch.type = 'button';
+      swatch.className = 'events-color-swatch' + (hex === selectedColor ? ' selected' : '');
+      swatch.style.background = hex;
+      swatch.title = hex;
+      swatch.addEventListener('click', () => {
+        selectedColor = hex;
+        for (const s of palette.children) s.classList.toggle('selected', s === swatch);
+        updateIconColors();
+      });
+      palette.appendChild(swatch);
+    }
+    clrRow.appendChild(palette);
 
     // Duration
     const durRow = addRow('Active');
@@ -852,7 +860,7 @@ export function openEventsDialog(btn) {
       else if (durSel.value === 'custom') activeDuration = Math.max(1, parseInt(durInput.value, 10) || 1);
 
       const icon = selectedIcon;
-      const color = colorInput.value;
+      const color = selectedColor;
 
       if (isNew) {
         const id = crypto.randomUUID();
