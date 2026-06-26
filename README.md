@@ -193,16 +193,30 @@ current viewport are shown as edge markers.
 
 ### Event templates
 
-The **Events** button opens the event template manager. Each template pairs a
-regular expression with a colored icon. When a template matches a log line, the
-icon appears in a fixed-width column to the left of the log level across every
-line in the panel — matched lines show their icon, unmatched lines leave the
-column blank. Hovering an icon shows the template name and any values captured
-by the regexp's capture groups.
+The **Events** button opens the event template manager. Each template matches
+log lines using the same filter component used by Focus and per-panel filters:
+a query (substring or regexp), optional log-level chips, and optional
+structured field key/value rows. When a template matches a log line, its
+colored icon appears in a fixed-width column to the left of the level badge —
+matched lines show their icon, unmatched lines leave the column blank. Hovering
+an icon shows the template name and the values of any structured fields named
+in the template's filter.
 
-Templates with an **active duration** also highlight subsequent log lines with a
+Templates with an **active duration** highlight subsequent log lines with a
 colored left-border for a configurable window after the match: useful for
-marking the duration of a request, a deployment, or any other interval that
-starts with a known log event.
+marking the span of a request, a deployment, or any other timed interval.
 
-Templates are persisted in `localStorage` and reapplied whenever the page is reloaded.
+**Linked templates** let a child template fire only while a parent template
+event is still active. Matching is evaluated across all open logs in timestamp
+order, so parent and child events can live in completely separate log streams.
+If both templates name the same structured field (e.g. `req_id`), a child
+event only links to the parent event whose captured value matches — enabling
+per-request or per-trace correlation across services.
+
+**Event timeline** — when event processing is active, a horizontal strip
+appears above the log panels and shows every matched event positioned at its
+timestamp. Scroll to zoom, drag to pan, and click an icon to jump to the
+matching log line.
+
+Templates are persisted in `localStorage` and restored on page load. They are
+not encoded in the URL hash, so sharing a URL does not share event templates.

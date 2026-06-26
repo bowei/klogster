@@ -1,35 +1,38 @@
 # Filtering
 
-Many features allow the user to specify a filter on the log lines.
-This doc describes a unified filter specification and UI.
+klogster uses a unified filter component shared across per-panel filters,
+Focus, and event template matching. A filter is composed of up to three parts
+that are ANDed together — a line must satisfy every non-empty part to match.
 
-Fitlers use:
+## Filter parts
 
-* per-log filter
-* focus
-* events
+**Query** — a text pattern applied to the full log line:
 
-## Definition
+- Default: case-insensitive substring match.
+- **Aa** toggle: case-sensitive substring match.
+- **.\*** toggle: treats the pattern as a regular expression.
 
-Log content filters:
+**Level** — restrict to one or more log levels. Click level chips
+(DEBUG, INFO, WARN, ERROR, FATAL, TRACE) to toggle them. When no chips are
+selected, all levels pass. Only applies to log sources that emit structured
+levels.
 
-By string:
+**Fields** — one or more key/value rows for structured log fields. Each row
+has its own Aa (case-sensitive) and .* (regexp) toggles. A line matches a row
+when the named field exists in the line's structured data and its value
+satisfies the pattern. When multiple field rows are present, all must match.
+Field values from matching rows are captured as metadata (shown in event
+tooltips and focus highlights).
 
-* sub string match (case sensitive and case insensitive)
-* regex match
+## Where it is used
 
-By metadata field:
-
-* Log level (info, debug, etc) -- multiple can be selected.
-* Structure log field match (string match on value)
-
-## Filter dialog component
-
-This a sketch of what the filter/query dialog component should look like:
-
-```
- Query: [        ] (case sensitive icon) (regex icon)
- Log level: [ ] all [ ] debug [ ] info [ ] warn [ ] error ...
- Metadata: (list of 0 or more)
- key [   ] value [    ] (case insensitive icon) (regex icon)
-```
+- **Per-panel filter** — each panel has its own independent filter stack.
+  Filters are either `+ show` (keep only matching lines) or `− hide` (remove
+  matching lines). Multiple filters are ORed for `+ show` and independently
+  applied for `− hide`.
+- **Focus** — cross-panel filter. Multiple focus filters are ORed: a line is
+  visible if it matches any one of them. An optional context window shows
+  surrounding lines near each match.
+- **Event templates** — each template's match field uses the same filter
+  component. When the template fires, any structured field values named in the
+  filter's Fields rows are captured as event metadata.
