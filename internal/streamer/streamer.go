@@ -68,20 +68,23 @@ func (s *PodStreamer) Run(ctx context.Context) error {
 	}
 	defer stream.Close()
 
+	type entry struct {
+		line  string
+		ts    time.Time
+		inner string
+	}
+
 	detector := &logformat.Detector{}
-	scanner := bufio.NewScanner(stream)
-	for scanner.Scan() {
-		if ctx.Err() != nil {
-			break
-		}
-		line := scanner.Text()
-		ts, inner := splitK8sLine(line)
-		parsed := detector.Parse(inner)
+	var buf []entry
+
+	emit := func(e entry) {
+		parsed := detector.Parse(e.inner)
+		ts := e.ts
 		if ts.IsZero() {
 			ts = parsed.Timestamp
 		}
 		s.stats.add(parsed.Level)
-		s.store.Append(s.groupName, s.namespace, s.podName, s.containerName, line)
+		s.store.Append(s.groupName, s.namespace, s.podName, s.containerName, e.line)
 		s.hub.Broadcast(hub.LogLine{
 			GroupName:     s.groupName,
 			Namespace:     s.namespace,
@@ -89,11 +92,51 @@ func (s *PodStreamer) Run(ctx context.Context) error {
 			ContainerName: s.containerName,
 			Timestamp:     ts,
 			Level:         parsed.Level,
-			Text:          line,
+			Text:          e.line,
 			Message:       parsed.Message,
 			Fields:        parsed.Fields,
 		})
 	}
+
+	scanner := bufio.NewScanner(stream)
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			break
+		}
+		line := scanner.Text()
+		ts, inner := splitK8sLine(line)
+		e := entry{line, ts, inner}
+
+		if !detector.IsLocked() {
+			// Feed this line to the detector for format detection, then buffer it.
+			// We call Parse to advance the sample window; the result is discarded
+			// because we'll re-parse once the format is locked in.
+			detector.Parse(inner)
+			buf = append(buf, e)
+
+			if !detector.IsLocked() {
+				continue
+			}
+			// The detector just locked in on this line. Re-parse and emit all
+			// buffered lines (including the current one) with the correct format.
+			for _, b := range buf {
+				emit(b)
+			}
+			buf = nil
+			continue
+		}
+
+		emit(e)
+	}
+
+	// Stream ended before sampleSize lines were collected; flush the buffer.
+	if len(buf) > 0 {
+		detector.Finalize()
+		for _, b := range buf {
+			emit(b)
+		}
+	}
+
 	return scanner.Err()
 }
 

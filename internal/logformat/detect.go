@@ -33,6 +33,26 @@ func (d *Detector) FormatName() string {
 	return d.format.Name()
 }
 
+// IsLocked reports whether format detection has completed.
+func (d *Detector) IsLocked() bool { return d.format != nil }
+
+// Finalize forces format detection based on whatever samples have been
+// collected so far. No-op if the format is already locked in. Call this when
+// the stream ends before sampleSize lines have been seen.
+func (d *Detector) Finalize() {
+	if d.format != nil {
+		return
+	}
+	if len(d.sample) == 0 {
+		d.format = unstructured{}
+		return
+	}
+	d.lockIn()
+	if d.format == nil {
+		d.format = unstructured{}
+	}
+}
+
 func (d *Detector) lockIn() {
 	counts := make(map[string]int, len(registered))
 	for _, line := range d.sample {
@@ -52,7 +72,7 @@ func (d *Detector) lockIn() {
 		}
 	}
 	// Require a majority of sample lines to agree on a format.
-	if bestCount*2 >= n {
+	if best != nil && bestCount*2 >= n {
 		d.format = best
 	} else {
 		d.format = unstructured{}

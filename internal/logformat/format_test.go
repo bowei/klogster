@@ -379,6 +379,51 @@ func TestDetectorSamplingPeriod(t *testing.T) {
 	}
 }
 
+func TestDetectorIsLocked(t *testing.T) {
+	d := &logformat.Detector{}
+	if d.IsLocked() {
+		t.Error("IsLocked() = true before any lines, want false")
+	}
+	for i := 0; i < 9; i++ {
+		d.Parse("I0116 10:00:00.000000 1234 server.go:42] msg")
+		if d.IsLocked() {
+			t.Errorf("IsLocked() = true after %d lines, want false", i+1)
+		}
+	}
+	d.Parse("I0116 10:00:00.000000 1234 server.go:42] msg")
+	if !d.IsLocked() {
+		t.Error("IsLocked() = false after 10 lines, want true")
+	}
+}
+
+func TestDetectorFinalize(t *testing.T) {
+	d := &logformat.Detector{}
+	for i := 0; i < 5; i++ {
+		d.Parse("I0116 10:00:00.000000 1234 server.go:42] msg")
+	}
+	if d.IsLocked() {
+		t.Error("IsLocked() = true after 5 lines, want false")
+	}
+	d.Finalize()
+	if !d.IsLocked() {
+		t.Error("IsLocked() = false after Finalize, want true")
+	}
+	if d.FormatName() != "klog" {
+		t.Errorf("FormatName() = %q, want klog", d.FormatName())
+	}
+}
+
+func TestDetectorFinalizeEmpty(t *testing.T) {
+	d := &logformat.Detector{}
+	d.Finalize()
+	if !d.IsLocked() {
+		t.Error("IsLocked() = false after Finalize on empty detector, want true")
+	}
+	if d.FormatName() != "unstructured" {
+		t.Errorf("FormatName() = %q, want unstructured", d.FormatName())
+	}
+}
+
 func TestDetectorNoMajority(t *testing.T) {
 	// When the best-matching format covers fewer than half the sample lines,
 	// the detector falls back to unstructured. 4 klog lines out of 10 = 40% < 50%.
