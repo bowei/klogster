@@ -43,7 +43,7 @@ The main area is divided into one or more vertical columns. Each column holds on
 
 Clicking anywhere inside a column makes it the focused column — the target for the next pod opened from the browser. The **+ Panel** button adds a new empty column on the right and focuses it.
 
-A column is removed automatically when its last tab is closed.
+When a column has no open tabs — either because it was just created with **+ Panel** or because its last tab was closed — it shows a centered **close panel** button. Clicking it removes the column.
 
 ### Tabs
 Each open pod/container gets a tab at the top of its column. The active tab has a colored top border. Tabs show the truncated pod name; hovering shows the full `group / namespace / pod / container` path in a tooltip.
@@ -51,7 +51,7 @@ Each open pod/container gets a tab at the top of its column. The active tab has 
 - **Clicking a tab** switches the column to show that tab's log.
 - **Dragging a tab** over another tab reorders them within the column.
 - **Dragging a tab** onto a different column's tab bar moves it to that column.
-- **✕ on a tab** closes the tab and unsubscribes from its log stream. If it was the last tab in the column, the column is removed.
+- **✕ on a tab** closes the tab and unsubscribes from its log stream. If it was the last tab in the column, the column enters the empty state (see above).
 
 ### Panel label
 The toolbar at the top of each tab's content shows the full `group / namespace / pod / container` path.
