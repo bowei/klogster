@@ -274,7 +274,15 @@ function getTip() {
   return tipEl;
 }
 
+let tipPinned = false;
+
 function hideTip() {
+  if (tipPinned) return;
+  tipEl?.classList.remove('visible');
+}
+
+function unpinTip() {
+  tipPinned = false;
   tipEl?.classList.remove('visible');
 }
 
@@ -316,7 +324,7 @@ function buildPopContent(container, ev, liveEvs, entry) {
       btn.className = 'event-link-btn';
       btn.textContent = targetName;
       btn.addEventListener('click', () => {
-        hideTip();
+        unpinTip();
         if (targetEntryEl) {
           targetEntryEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
           targetEntryEl.classList.add('log-entry--nav-flash');
@@ -339,6 +347,7 @@ function buildPopContent(container, ev, liveEvs, entry) {
 }
 
 document.addEventListener('mouseover', e => {
+  if (tipPinned) return;
   const icon = e.target.closest('.log-event-icon');
   if (!icon) return;
   const entry = icon.closest('.log-entry');
@@ -375,6 +384,14 @@ document.addEventListener('mouseout', e => {
   const goingToIcon = e.relatedTarget?.closest('.log-event-icon');
   const goingToTip = e.relatedTarget?.closest('.event-tooltip');
   if (!goingToIcon && !goingToTip) hideTip();
+});
+
+document.addEventListener('click', e => {
+  if (e.target.closest('.log-event-icon')) {
+    tipPinned = true;
+    return;
+  }
+  if (!e.target.closest('.event-tooltip')) unpinTip();
 });
 
 // ── Storage ───────────────────────────────────────────────────────────────────
