@@ -45,7 +45,7 @@ function esc(s) {
 
 function showTip(anchorEl, ev) {
   const tip = getTip();
-  const ts = ev.ts ? new Date(ev.ts).toLocaleString() : '—';
+  const ts = ev.ts ? new Date(ev.ts).toLocaleString([], { hour12: false }) : '—';
   const source = ev.tab ? `${ev.tab.pod}/${ev.tab.container}` : '';
   let html = `<div class="event-tip-name">${esc(ev.name)}</div>`;
   html += `<div class="event-tip-ts">${esc(ts)}</div>`;
@@ -189,15 +189,15 @@ function renderAxis(vpWidth, minMs, maxMs) {
 function formatTickLabel(ms, intervalMs) {
   const d = new Date(ms);
   if (intervalMs >= 3_600_000) {
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
   }
   if (intervalMs >= 60_000) {
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
   }
   if (intervalMs >= 1_000) {
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   }
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) +
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) +
     '.' + String(d.getMilliseconds()).padStart(3, '0');
 }
 
@@ -235,7 +235,7 @@ function openOverflowPopup(e, evs) {
 
     const info = document.createElement('span');
     info.className = 'etl-overflow-info';
-    const ts = ev.ts ? new Date(ev.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+    const ts = ev.ts ? new Date(ev.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '';
     info.textContent = `${ev.name}${ts ? ' · ' + ts : ''}`;
 
     row.appendChild(icon);
