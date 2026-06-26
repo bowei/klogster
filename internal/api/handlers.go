@@ -67,18 +67,32 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	rawLines := s.store.Tail(group, ns, pod, container, n)
 
-	det := &logformat.Detector{}
-	result := make([]parsedLogLine, 0, len(rawLines))
-	for _, line := range rawLines {
-		var tsStr string
-		inner := line
+	extractInner := func(line string) (tsStr, inner string) {
+		inner = line
 		if idx := strings.IndexByte(line, ' '); idx > 0 {
 			candidate := line[:idx]
 			if _, err := time.Parse(time.RFC3339Nano, candidate); err == nil {
-				tsStr = candidate
-				inner = line[idx+1:]
+				return candidate, line[idx+1:]
 			}
 		}
+		return "", line
+	}
+
+	det := &logformat.Detector{}
+	// Pre-scan to lock in the format before the parse pass so that lines
+	// processed during the sampling window get the correct format applied.
+	for _, line := range rawLines {
+		_, inner := extractInner(line)
+		det.Parse(inner)
+		if det.IsLocked() {
+			break
+		}
+	}
+	det.Finalize()
+
+	result := make([]parsedLogLine, 0, len(rawLines))
+	for _, line := range rawLines {
+		tsStr, inner := extractInner(line)
 		parsed := det.Parse(inner)
 		if tsStr == "" && !parsed.Timestamp.IsZero() {
 			tsStr = parsed.Timestamp.UTC().Format(time.RFC3339)

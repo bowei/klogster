@@ -94,3 +94,61 @@ func TestPodStreamer_EndToEnd(t *testing.T) {
 		}
 	}
 }
+
+// TestPodStreamer_SamplingWindowParsedCorrectly verifies that lines arriving
+// during the format-detection sampling window (before sampleSize lines have
+// been seen) are emitted with the correct parsed level, not as "OTHER".
+func TestPodStreamer_SamplingWindowParsedCorrectly(t *testing.T) {
+	dir := t.TempDir()
+	store, err := storage.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	h := hub.New()
+	client := h.NewClient()
+	client.Subscribe("grp", "ns", "pod", "app")
+	defer h.RemoveClient(client)
+
+	// 11 stdlog lines: the first 9 fall inside the 10-line sampling window.
+	var lines []string
+	for i := 0; i < 11; i++ {
+		lines = append(lines, "2024/01/01 00:00:00 INFO message")
+	}
+
+	ps := &PodStreamer{
+		groupName:     "grp",
+		namespace:     "ns",
+		podName:       "pod",
+		containerName: "app",
+		opener:        &fakeLogOpener{lines: lines},
+		store:         store,
+		hub:           h,
+		stats:         newStats(),
+	}
+
+	if err := ps.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var received []hub.LogLine
+	deadline := time.After(2 * time.Second)
+	for len(received) < len(lines) {
+		select {
+		case line, ok := <-client.Send():
+			if !ok {
+				t.Fatal("hub client channel closed unexpectedly")
+			}
+			received = append(received, line)
+		case <-deadline:
+			t.Fatalf("hub: timeout — got %d lines, want %d", len(received), len(lines))
+		}
+	}
+
+	for i, line := range received {
+		if line.Level != "INFO" {
+			t.Errorf("line %d: Level = %q, want INFO (sampling window lines should be re-parsed after lock-in)", i, line.Level)
+		}
+	}
+}
