@@ -586,7 +586,7 @@ export function openEventsDialog(btn) {
     formEl.innerHTML = '';
 
     const fhdr = document.createElement('div');
-    fhdr.className = 'events-form-hdr';
+    fhdr.className = 'events-form-hdr events-form-hdr--primary';
     fhdr.textContent = isNew ? 'New Template' : 'Edit Template';
     formEl.appendChild(fhdr);
 

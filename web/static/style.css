@@ -980,6 +980,26 @@ mark.focus-match {
   white-space: nowrap;
 }
 
+/* ── Empty panel state ── */
+.panel-empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+.btn-close-panel-empty {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 6px 16px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.btn-close-panel-empty:hover { color: var(--text); border-color: var(--text-dim); }
+
 /* ── Main panels area ── */
 #panels-container {
   display: flex;
@@ -1781,6 +1801,16 @@ mark.focus-match {
   color: var(--text-dim);
   background: var(--bg3);
 }
+.events-form-hdr:not(:first-child) {
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.events-form-hdr--primary {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  padding: 6px 10px;
+}
 
 .events-form-row {
   display: flex;
@@ -1824,15 +1854,17 @@ mark.focus-match {
 
 /* Icon picker */
 .events-form-picker-row {
-  align-items: flex-start;
+  align-items: center;
   padding: 5px 10px;
 }
 
 .events-icon-picker-wrap {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
   flex: 1;
+  flex-wrap: wrap;
 }
 
 .events-icon-picker {
@@ -1844,8 +1876,7 @@ mark.focus-match {
 .events-icon-none {
   font-size: 11px;
   color: var(--text-dim);
-  padding: 2px 6px;
-  align-self: flex-start;
+  padding: 2px 5px;
 }
 
 .events-icon-option {

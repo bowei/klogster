@@ -713,6 +713,27 @@ function renderGroupTabBar(pg) {
   }
 }
 
+// ── Empty-state helpers ───────────────────────────────────────────────────────
+
+function showEmptyState(pg) {
+  if (pg.emptyStateEl) return;
+  const el = document.createElement('div');
+  el.className = 'panel-empty-state';
+  const btn = document.createElement('button');
+  btn.className = 'btn-close-panel-empty';
+  btn.textContent = 'close panel';
+  btn.addEventListener('click', () => removePanelGroup(pg.id));
+  el.appendChild(btn);
+  pg.el.appendChild(el);
+  pg.emptyStateEl = el;
+}
+
+function hideEmptyState(pg) {
+  if (!pg.emptyStateEl) return;
+  pg.emptyStateEl.remove();
+  pg.emptyStateEl = null;
+}
+
 // ── Panel group management ────────────────────────────────────────────────────
 
 export function addPanelGroup() {
@@ -795,9 +816,10 @@ export function addPanelGroup() {
   // Clicking anywhere in this panel group focuses it
   el.addEventListener('mousedown', () => focusGroup(pgId));
 
-  const pg = { id: pgId, el, activeTabId: null, tabs: [], merged: false, mergedEl: mergedPanelEl, mergedLogEl, mergedEntries: [] };
+  const pg = { id: pgId, el, activeTabId: null, tabs: [], merged: false, mergedEl: mergedPanelEl, mergedLogEl, mergedEntries: [], emptyStateEl: null };
   panelGroups.push(pg);
   document.getElementById('panels-container').appendChild(el);
+  showEmptyState(pg);
   focusGroup(pgId);
   return pg;
 }
@@ -848,7 +870,7 @@ function removeTab(groupId, tabId) {
   }));
 
   if (pg.tabs.length === 0) {
-    removePanelGroup(pg.id);
+    showEmptyState(pg);
   } else {
     if (pg.activeTabId === tabId) {
       const next = pg.tabs[Math.min(idx, pg.tabs.length - 1)];
@@ -883,7 +905,7 @@ function moveTab(srcGroupId, tabId, dstGroupId, beforeTabId) {
   // Fix source group after removal
   const srcWasActive = srcPg.activeTabId === tabId;
   if (srcPg.tabs.length === 0) {
-    removePanelGroup(srcPg.id);
+    showEmptyState(srcPg);
   } else {
     if (srcWasActive) {
       const next = srcPg.tabs[Math.min(srcIdx, srcPg.tabs.length - 1)];
@@ -990,6 +1012,7 @@ export function openPanel(group, ns, pod, container, _onClose) {
   };
 
   pg.tabs.push(tab);
+  hideEmptyState(pg);
   pg.el.appendChild(tab.el);
 
   filterBtn.addEventListener('click', () => openFilterDialog(tab));
