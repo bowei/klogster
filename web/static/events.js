@@ -274,8 +274,68 @@ function getTip() {
   return tipEl;
 }
 
-function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function hideTip() {
+  tipEl?.classList.remove('visible');
+}
+
+function buildPopContent(container, ev, liveEvs, entry) {
+  container.innerHTML = '';
+
+  const nameEl = document.createElement('div');
+  nameEl.className = 'event-tip-name';
+  nameEl.textContent = ev.name;
+  container.appendChild(nameEl);
+
+  const keys = Object.keys(ev.metadata || {});
+  if (keys.length) {
+    const tbl = document.createElement('table');
+    tbl.className = 'event-tip-table';
+    for (const k of keys) {
+      const tr = document.createElement('tr');
+      const tdKey = document.createElement('td');
+      tdKey.className = 'event-tip-key';
+      tdKey.textContent = k;
+      const tdVal = document.createElement('td');
+      tdVal.className = 'event-tip-val';
+      tdVal.textContent = ev.metadata[k];
+      tr.appendChild(tdKey);
+      tr.appendChild(tdVal);
+      tbl.appendChild(tr);
+    }
+    container.appendChild(tbl);
+  }
+
+  // Nav rows for linked events — only available from the live map (not serialized clones).
+  if (liveEvs && entry) {
+    const childLinks = (parentLinksMap.get(entry) || []).filter(l => l.parentInstanceId === ev.instanceId);
+
+    function makeNavRow(label, targetName, targetEntryEl) {
+      const row = document.createElement('div');
+      row.className = 'event-link-row';
+      const btn = document.createElement('button');
+      btn.className = 'event-link-btn';
+      btn.textContent = targetName;
+      btn.addEventListener('click', () => {
+        hideTip();
+        if (targetEntryEl) {
+          targetEntryEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          targetEntryEl.classList.add('log-entry--nav-flash');
+          setTimeout(() => targetEntryEl.classList.remove('log-entry--nav-flash'), 1500);
+        }
+        _navigateCb?.(targetEntryEl);
+      });
+      row.appendChild(document.createTextNode(label));
+      row.appendChild(btn);
+      container.appendChild(row);
+    }
+
+    if (ev.linkedToInstance) {
+      makeNavRow('Linked to: ', ev.linkedToInstance.name, ev.linkedToInstance.entryEl);
+    }
+    for (const l of childLinks) {
+      makeNavRow('Linked from: ', l.childName, l.childEntryEl);
+    }
+  }
 }
 
 document.addEventListener('mouseover', e => {
@@ -301,28 +361,7 @@ document.addEventListener('mouseover', e => {
   if (!ev) return;
 
   const tip = getTip();
-  let html = `<div class="event-tip-name">${esc(ev.name)}</div>`;
-  const keys = Object.keys(ev.metadata || {});
-  if (keys.length) {
-    html += '<table class="event-tip-table">';
-    for (const k of keys) {
-      html += `<tr><td class="event-tip-key">${esc(k)}</td><td class="event-tip-val">${esc(ev.metadata[k])}</td></tr>`;
-    }
-    html += '</table>';
-  }
-
-  // Link annotations — only available from the live map (not serialized clones).
-  if (liveEvs) {
-    if (ev.linkedToInstance) {
-      html += `<div class="event-tip-link event-tip-link--to">→ ${esc(ev.linkedToInstance.name)}</div>`;
-    }
-    const childLinks = (parentLinksMap.get(entry) || []).filter(l => l.parentInstanceId === ev.instanceId);
-    for (const l of childLinks) {
-      html += `<div class="event-tip-link event-tip-link--from">← ${esc(l.childName)}</div>`;
-    }
-  }
-
-  tip.innerHTML = html;
+  buildPopContent(tip, ev, liveEvs, entry);
   const r = icon.getBoundingClientRect();
   tip.style.left = `${r.right + 6}px`;
   tip.style.top = `${r.top}px`;
@@ -330,94 +369,12 @@ document.addEventListener('mouseover', e => {
 });
 
 document.addEventListener('mouseout', e => {
-  if (e.target.closest('.log-event-icon') && !e.relatedTarget?.closest('.log-event-icon')) {
-    tipEl?.classList.remove('visible');
-  }
-});
-
-// ── Click popup for linked events ─────────────────────────────────────────────
-
-let linkPopEl = null;
-
-function closeLinkPop() {
-  linkPopEl?.remove();
-  linkPopEl = null;
-}
-
-document.addEventListener('click', e => {
-  const icon = e.target.closest('.log-event-icon');
-  if (!icon) { closeLinkPop(); return; }
-
-  const entry = icon.closest('.log-entry');
-  if (!entry) return;
-
-  const evs = entryEventsMap.get(entry);
-  if (!evs) return;
-
-  const icons = [...entry.querySelectorAll('.log-event-icon')];
-  const idx = icons.indexOf(icon);
-  const ev = evs[idx >= 0 ? idx : 0];
-  if (!ev) return;
-
-  const childLinks = (parentLinksMap.get(entry) || []).filter(l => l.parentInstanceId === ev.instanceId);
-  if (!ev.linkedToInstance && !childLinks.length) return;
-
-  e.stopPropagation();
-  closeLinkPop();
-
-  const pop = document.createElement('div');
-  pop.className = 'event-link-popup';
-
-  const nameEl = document.createElement('div');
-  nameEl.className = 'event-tip-name';
-  nameEl.textContent = ev.name;
-  pop.appendChild(nameEl);
-
-  const keys = Object.keys(ev.metadata || {});
-  if (keys.length) {
-    const tbl = document.createElement('table');
-    tbl.className = 'event-tip-table';
-    for (const k of keys) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td class="event-tip-key">${esc(k)}</td><td class="event-tip-val">${esc(ev.metadata[k])}</td>`;
-      tbl.appendChild(tr);
-    }
-    pop.appendChild(tbl);
-  }
-
-  function makeNavRow(label, targetName, targetEntryEl) {
-    const row = document.createElement('div');
-    row.className = 'event-link-row';
-    const btn = document.createElement('button');
-    btn.className = 'event-link-btn';
-    btn.textContent = targetName;
-    btn.addEventListener('click', () => {
-      closeLinkPop();
-      if (targetEntryEl) {
-        targetEntryEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        targetEntryEl.classList.add('log-entry--nav-flash');
-        setTimeout(() => targetEntryEl.classList.remove('log-entry--nav-flash'), 1500);
-      }
-      _navigateCb?.(targetEntryEl);
-    });
-    row.appendChild(document.createTextNode(label));
-    row.appendChild(btn);
-    pop.appendChild(row);
-  }
-
-  if (ev.linkedToInstance) {
-    makeNavRow('Linked to: ', ev.linkedToInstance.name, ev.linkedToInstance.entryEl);
-  }
-  for (const l of childLinks) {
-    makeNavRow('Linked from: ', l.childName, l.childEntryEl);
-  }
-
-  document.body.appendChild(pop);
-  linkPopEl = pop;
-
-  const r = icon.getBoundingClientRect();
-  pop.style.left = `${r.right + 6}px`;
-  pop.style.top = `${r.top}px`;
+  const leavingIcon = e.target.closest('.log-event-icon');
+  const leavingTip = e.target.closest('.event-tooltip');
+  if (!leavingIcon && !leavingTip) return;
+  const goingToIcon = e.relatedTarget?.closest('.log-event-icon');
+  const goingToTip = e.relatedTarget?.closest('.event-tooltip');
+  if (!goingToIcon && !goingToTip) hideTip();
 });
 
 // ── Storage ───────────────────────────────────────────────────────────────────
