@@ -474,8 +474,65 @@ export function openEventsDialog(btn) {
   });
   enableLabel.appendChild(enableCb);
   enableLabel.appendChild(document.createTextNode(' Enabled'));
+
+  const saveJsonBtn = document.createElement('button');
+  saveJsonBtn.className = 'events-icon-btn';
+  saveJsonBtn.title = 'Download event templates as JSON';
+  saveJsonBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1v8M4 6l3 3 3-3M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  saveJsonBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const data = JSON.stringify({ enabled: eventsState.enabled, templates: eventsState.templates }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'event-templates.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.json,application/json';
+  fileInput.style.display = 'none';
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (Array.isArray(data.templates)) {
+          eventsState.templates = data.templates.map(migrateTemplate);
+          if ('enabled' in data) eventsState.enabled = Boolean(data.enabled);
+          enableCb.checked = eventsState.enabled;
+          notifyChanged();
+          renderList();
+        }
+      } catch {}
+      fileInput.value = '';
+    };
+    reader.readAsText(file);
+  });
+
+  const loadJsonBtn = document.createElement('button');
+  loadJsonBtn.className = 'events-icon-btn';
+  loadJsonBtn.title = 'Load event templates from JSON file';
+  loadJsonBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 9V1M4 4l3-3 3 3M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  loadJsonBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    fileInput.click();
+  });
+
+  const hdrRight = document.createElement('div');
+  hdrRight.className = 'events-hdr-right';
+  hdrRight.appendChild(saveJsonBtn);
+  hdrRight.appendChild(loadJsonBtn);
+  hdrRight.appendChild(fileInput);
+  hdrRight.appendChild(enableLabel);
+
   hdr.appendChild(titleEl);
-  hdr.appendChild(enableLabel);
+  hdr.appendChild(hdrRight);
   dlg.appendChild(hdr);
 
   const listEl = document.createElement('div');

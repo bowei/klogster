@@ -870,6 +870,7 @@ function removeTab(groupId, tabId) {
   }));
 
   if (pg.tabs.length === 0) {
+    renderGroupTabBar(pg);
     showEmptyState(pg);
   } else {
     if (pg.activeTabId === tabId) {

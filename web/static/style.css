@@ -1480,7 +1480,6 @@ mark.focus-match {
   border-radius: 50%;
   background: #888;
   flex-shrink: 0;
-  title: 'WebSocket status';
 }
 #conn-status.connected { background: #4caf50; }
 #conn-status.error { background: #f44336; }
@@ -1678,6 +1677,29 @@ mark.focus-match {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   flex-shrink: 0;
+}
+
+.events-hdr-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.events-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 2px 3px;
+  border-radius: 3px;
+  color: var(--text-dim);
+  cursor: pointer;
+  line-height: 1;
+}
+.events-icon-btn:hover {
+  background: var(--hover);
+  color: var(--text);
 }
 
 .events-enable-label {
