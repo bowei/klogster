@@ -906,6 +906,7 @@ function moveTab(srcGroupId, tabId, dstGroupId, beforeTabId) {
   // Fix source group after removal
   const srcWasActive = srcPg.activeTabId === tabId;
   if (srcPg.tabs.length === 0) {
+    renderGroupTabBar(srcPg);
     showEmptyState(srcPg);
   } else {
     if (srcWasActive) {
@@ -926,6 +927,7 @@ function moveTab(srcGroupId, tabId, dstGroupId, beforeTabId) {
   }
 
   // Move panel DOM element into new group
+  hideEmptyState(dstPg);
   tab.el.remove();
   dstPg.el.appendChild(tab.el);
 
