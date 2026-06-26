@@ -1536,7 +1536,7 @@ mark.focus-match {
 .log-event-icon {
   font-size: 12px;
   line-height: 1;
-  cursor: default;
+  cursor: pointer;
 }
 
 .log-event-more {
@@ -1567,6 +1567,51 @@ mark.focus-match {
 }
 .event-tooltip.visible { display: block; }
 
+/* ── Event link popup (click on linked event icon) ── */
+.event-link-popup {
+  position: fixed;
+  z-index: 601;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+  max-width: 260px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+
+.event-link-row {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.event-link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  font-family: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.event-link-btn:hover { color: var(--text); }
+
+/* Flash highlight when navigating to a linked entry */
+.log-entry--nav-flash {
+  animation: nav-flash 1.5s ease-out;
+}
+@keyframes nav-flash {
+  0%   { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+  100% { background: transparent; }
+}
+
 .event-tip-name {
   font-weight: 600;
   color: var(--text);
@@ -1587,6 +1632,16 @@ mark.focus-match {
   color: var(--text);
   word-break: break-all;
 }
+
+.event-tip-link {
+  margin-top: 5px;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.event-tip-link--to   { color: var(--accent); }
+.event-tip-link--from { color: var(--text-dim); }
 
 /* ── Events dialog ── */
 .events-dialog {
@@ -1650,6 +1705,14 @@ mark.focus-match {
 }
 .events-item:last-child { border-bottom: none; }
 .events-item--editing { background: var(--bg3); }
+
+.events-item-prefix {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-right: 2px;
+  user-select: none;
+}
 
 .events-item-icon {
   flex-shrink: 0;

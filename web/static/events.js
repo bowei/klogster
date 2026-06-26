@@ -1,6 +1,10 @@
 // events.js — Event template management, matching, and display.
 import { ruleMatches, ruleIsEmpty, ruleSummary, buildFilterCompose } from './filter.js';
 
+// ── Navigate callback (set by panels.js) ──────────────────────────────────────
+let _navigateCb = null;
+export function setNavigateCallback(fn) { _navigateCb = fn; }
+
 const STORAGE_KEY = 'klogster:events';
 
 const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#06b6d4', '#ec4899'];
@@ -22,34 +26,69 @@ export const ICON_PRESETS = [
 
 export const eventsState = {
   enabled: false,
-  templates: [], // [{id, name, filter: {query,levels,metadata}, icon, color, activeDuration}]
+  templates: [], // [{id, name, filter: {query,levels,metadata}, icon, color, activeDuration, linkedTo}]
 };
 
 // Migrate an old-format template (regexp+metadataKeys) to new filter format.
 function migrateTemplate(t) {
-  if (t.filter) return t;
-  return {
-    ...t,
-    filter: { type: 'positive', query: { text: t.regexp || '', caseSensitive: false, regex: true }, levels: [], metadata: [] },
-    regexp: undefined,
-    metadataKeys: undefined,
-  };
+  let out = t;
+  if (!out.filter) {
+    out = {
+      ...out,
+      filter: { type: 'positive', query: { text: out.regexp || '', caseSensitive: false, regex: true }, levels: [], metadata: [] },
+      regexp: undefined,
+      metadataKeys: undefined,
+    };
+  }
+  if (!('linkedTo' in out)) out = { ...out, linkedTo: null };
+  return out;
 }
 
 // WeakMap: entry element -> matched events array (for applyActiveDurations)
 const entryEventsMap = new WeakMap();
+// WeakMap: parent entry element -> [{childName, parentInstanceId, childEntryEl}]
+// Maintained in parallel with entryEventsMap so tooltips can show links in both directions.
+const parentLinksMap = new WeakMap();
+
+// ── Active event tracker ───────────────────────────────────────────────────────
+// One tracker per tab, passed into matchAndAnnotate so child events can find
+// active parent events. active entries: {templateId, instanceId, name, metadata, endTs, entryEl}
+
+export function createActiveEventsTracker() {
+  return { active: [] };
+}
+
+// Single shared tracker across all tabs so child events can find parent events
+// in a different log (e.g. client request log → server response log).
+export const globalTracker = createActiveEventsTracker();
+
+// Returns true if there are no shared metadata keys, or all shared keys have equal values.
+function metadataMatches(parentMeta, childMeta) {
+  for (const k of Object.keys(parentMeta)) {
+    if (k in childMeta && parentMeta[k] !== childMeta[k]) return false;
+  }
+  return true;
+}
 
 // ── Matching ──────────────────────────────────────────────────────────────────
 
-export function matchAndAnnotate(entry, text) {
+export function matchAndAnnotate(entry, text, tracker) {
   const col = entry.querySelector('.log-event-col');
   if (!col || !eventsState.enabled || !eventsState.templates.length) return null;
+
+  const tsMs = entry.dataset.ts ? new Date(entry.dataset.ts).getTime() : 0;
+
+  // Prune expired active events from tracker before checking links.
+  if (tracker && tsMs) {
+    tracker.active = tracker.active.filter(a => a.endTs === Infinity || a.endTs >= tsMs);
+  }
 
   const matched = [];
   for (const tmpl of eventsState.templates) {
     if (!tmpl.filter || ruleIsEmpty(tmpl.filter)) continue;
     if (!ruleMatches(tmpl.filter, entry)) continue;
-    // Collect metadata from matched structured fields specified in the filter's metadata rows.
+
+    // Collect metadata from matched structured fields.
     const metadata = {};
     if (tmpl.filter.metadata && entry.dataset.fields) {
       let fields = {};
@@ -58,29 +97,76 @@ export function matchAndAnnotate(entry, text) {
         if (m.key && m.key in fields) metadata[m.key] = String(fields[m.key]);
       }
     }
-    matched.push({
+
+    // If linked to a parent template, require an active parent event with matching metadata.
+    let linkedToInstance = null;
+    if (tmpl.linkedTo) {
+      if (!tracker) continue;
+      const parents = tracker.active.filter(a => a.templateId === tmpl.linkedTo);
+      if (!parents.length) continue;
+      const parent = parents.find(a => metadataMatches(a.metadata, metadata));
+      if (!parent) continue;
+      linkedToInstance = { entryEl: parent.entryEl, name: parent.name, instanceId: parent.instanceId };
+      // Register the reverse link so the parent tooltip can show its children.
+      let revLinks = parentLinksMap.get(parent.entryEl);
+      if (!revLinks) { revLinks = []; parentLinksMap.set(parent.entryEl, revLinks); }
+      revLinks.push({ childName: tmpl.name, parentInstanceId: parent.instanceId, childEntryEl: entry });
+    }
+
+    const instanceId = crypto.randomUUID();
+    const ev = {
       name: tmpl.name,
       icon: tmpl.icon ?? '',
       color: tmpl.color || '',
       activeDuration: tmpl.activeDuration ?? 0,
       metadata,
-    });
+      instanceId,
+      linkedToInstance,
+    };
+    matched.push(ev);
+
+    // Register this event in the tracker so its children can find it.
+    if (tracker && tmpl.activeDuration !== 0) {
+      const endTs = !tsMs || tmpl.activeDuration === -1 ? Infinity : tsMs + tmpl.activeDuration;
+      tracker.active.push({ templateId: tmpl.id, instanceId, name: tmpl.name, metadata, endTs, entryEl: entry });
+    }
   }
 
   if (!matched.length) return null;
 
   entryEventsMap.set(entry, matched);
   entry.classList.add('has-events');
-  // Store as JSON for tooltip delegation (survives cloneNode)
-  entry.dataset.eventData = JSON.stringify(matched);
+  // Serialize safely — linkedToInstance.entryEl is a DOM ref, strip it for JSON.
+  entry.dataset.eventData = JSON.stringify(matched.map(ev => ({
+    name: ev.name, icon: ev.icon, color: ev.color, activeDuration: ev.activeDuration,
+    metadata: ev.metadata, instanceId: ev.instanceId,
+    linkedToInstance: ev.linkedToInstance
+      ? { name: ev.linkedToInstance.name, instanceId: ev.linkedToInstance.instanceId }
+      : null,
+  })));
   renderCol(col, matched);
   return matched;
 }
 
-export function clearEntryEvents(entry) {
+export function clearEntryEvents(entry, tracker) {
+  // Remove this entry's reverse links from any parent entries it was linked to.
+  const evs = entryEventsMap.get(entry);
+  if (evs) {
+    for (const ev of evs) {
+      if (!ev.linkedToInstance?.entryEl) continue;
+      const parentLinks = parentLinksMap.get(ev.linkedToInstance.entryEl);
+      if (!parentLinks) continue;
+      const kept = parentLinks.filter(l => l.childEntryEl !== entry);
+      if (kept.length) parentLinksMap.set(ev.linkedToInstance.entryEl, kept);
+      else parentLinksMap.delete(ev.linkedToInstance.entryEl);
+    }
+  }
+  parentLinksMap.delete(entry);
+
   const col = entry.querySelector('.log-event-col');
   if (col) col.innerHTML = '';
   entry.classList.remove('has-events');
+  if (tracker) tracker.active = tracker.active.filter(a => a.entryEl !== entry);
   entryEventsMap.delete(entry);
   delete entry.dataset.eventData;
 }
@@ -182,14 +268,22 @@ document.addEventListener('mouseover', e => {
   const icon = e.target.closest('.log-event-icon');
   if (!icon) return;
   const entry = icon.closest('.log-entry');
-  if (!entry || !entry.dataset.eventData) return;
+  if (!entry) return;
 
-  let evs;
-  try { evs = JSON.parse(entry.dataset.eventData); } catch { return; }
-
+  // Prefer live map (has DOM refs); cloned merged-view entries fall back to JSON.
+  const liveEvs = entryEventsMap.get(entry);
   const icons = [...entry.querySelectorAll('.log-event-icon')];
   const idx = icons.indexOf(icon);
-  const ev = evs[idx >= 0 ? idx : 0];
+
+  let ev;
+  if (liveEvs) {
+    ev = liveEvs[idx >= 0 ? idx : 0];
+  } else if (entry.dataset.eventData) {
+    try {
+      const parsed = JSON.parse(entry.dataset.eventData);
+      ev = parsed[idx >= 0 ? idx : 0];
+    } catch { return; }
+  }
   if (!ev) return;
 
   const tip = getTip();
@@ -202,8 +296,19 @@ document.addEventListener('mouseover', e => {
     }
     html += '</table>';
   }
-  tip.innerHTML = html;
 
+  // Link annotations — only available from the live map (not serialized clones).
+  if (liveEvs) {
+    if (ev.linkedToInstance) {
+      html += `<div class="event-tip-link event-tip-link--to">→ ${esc(ev.linkedToInstance.name)}</div>`;
+    }
+    const childLinks = (parentLinksMap.get(entry) || []).filter(l => l.parentInstanceId === ev.instanceId);
+    for (const l of childLinks) {
+      html += `<div class="event-tip-link event-tip-link--from">← ${esc(l.childName)}</div>`;
+    }
+  }
+
+  tip.innerHTML = html;
   const r = icon.getBoundingClientRect();
   tip.style.left = `${r.right + 6}px`;
   tip.style.top = `${r.top}px`;
@@ -214,6 +319,91 @@ document.addEventListener('mouseout', e => {
   if (e.target.closest('.log-event-icon') && !e.relatedTarget?.closest('.log-event-icon')) {
     tipEl?.classList.remove('visible');
   }
+});
+
+// ── Click popup for linked events ─────────────────────────────────────────────
+
+let linkPopEl = null;
+
+function closeLinkPop() {
+  linkPopEl?.remove();
+  linkPopEl = null;
+}
+
+document.addEventListener('click', e => {
+  const icon = e.target.closest('.log-event-icon');
+  if (!icon) { closeLinkPop(); return; }
+
+  const entry = icon.closest('.log-entry');
+  if (!entry) return;
+
+  const evs = entryEventsMap.get(entry);
+  if (!evs) return;
+
+  const icons = [...entry.querySelectorAll('.log-event-icon')];
+  const idx = icons.indexOf(icon);
+  const ev = evs[idx >= 0 ? idx : 0];
+  if (!ev) return;
+
+  const childLinks = (parentLinksMap.get(entry) || []).filter(l => l.parentInstanceId === ev.instanceId);
+  if (!ev.linkedToInstance && !childLinks.length) return;
+
+  e.stopPropagation();
+  closeLinkPop();
+
+  const pop = document.createElement('div');
+  pop.className = 'event-link-popup';
+
+  const nameEl = document.createElement('div');
+  nameEl.className = 'event-tip-name';
+  nameEl.textContent = ev.name;
+  pop.appendChild(nameEl);
+
+  const keys = Object.keys(ev.metadata || {});
+  if (keys.length) {
+    const tbl = document.createElement('table');
+    tbl.className = 'event-tip-table';
+    for (const k of keys) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td class="event-tip-key">${esc(k)}</td><td class="event-tip-val">${esc(ev.metadata[k])}</td>`;
+      tbl.appendChild(tr);
+    }
+    pop.appendChild(tbl);
+  }
+
+  function makeNavRow(label, targetName, targetEntryEl) {
+    const row = document.createElement('div');
+    row.className = 'event-link-row';
+    const btn = document.createElement('button');
+    btn.className = 'event-link-btn';
+    btn.textContent = targetName;
+    btn.addEventListener('click', () => {
+      closeLinkPop();
+      if (targetEntryEl) {
+        targetEntryEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        targetEntryEl.classList.add('log-entry--nav-flash');
+        setTimeout(() => targetEntryEl.classList.remove('log-entry--nav-flash'), 1500);
+      }
+      _navigateCb?.(targetEntryEl);
+    });
+    row.appendChild(document.createTextNode(label));
+    row.appendChild(btn);
+    pop.appendChild(row);
+  }
+
+  if (ev.linkedToInstance) {
+    makeNavRow('Linked to: ', ev.linkedToInstance.name, ev.linkedToInstance.entryEl);
+  }
+  for (const l of childLinks) {
+    makeNavRow('Linked from: ', l.childName, l.childEntryEl);
+  }
+
+  document.body.appendChild(pop);
+  linkPopEl = pop;
+
+  const r = icon.getBoundingClientRect();
+  pop.style.left = `${r.right + 6}px`;
+  pop.style.top = `${r.top}px`;
 });
 
 // ── Storage ───────────────────────────────────────────────────────────────────
@@ -328,9 +518,31 @@ export function openEventsDialog(btn) {
       listEl.appendChild(empty);
       return;
     }
+
+    // Build tree: find roots and group children under their parent.
+    const tmplById = new Map(eventsState.templates.map(t => [t.id, t]));
+    const childrenOf = new Map();
+    const roots = [];
     for (const t of eventsState.templates) {
+      if (t.linkedTo && tmplById.has(t.linkedTo)) {
+        if (!childrenOf.has(t.linkedTo)) childrenOf.set(t.linkedTo, []);
+        childrenOf.get(t.linkedTo).push(t);
+      } else {
+        roots.push(t);
+      }
+    }
+
+    function renderItem(t, depth) {
       const row = document.createElement('div');
       row.className = 'events-item' + (t.id === editingId ? ' events-item--editing' : '');
+      if (depth > 0) row.style.paddingLeft = `${10 + depth * 16}px`;
+
+      if (depth > 0) {
+        const prefix = document.createElement('span');
+        prefix.className = 'events-item-prefix';
+        prefix.textContent = '∟';
+        row.appendChild(prefix);
+      }
 
       const iconEl = document.createElement('span');
       iconEl.className = 'events-item-icon' + (t.icon ? '' : ' events-item-icon--none');
@@ -357,7 +569,10 @@ export function openEventsDialog(btn) {
       delBtn.className = 'events-btn events-btn--del';
       delBtn.textContent = '×';
       delBtn.addEventListener('click', () => {
-        eventsState.templates = eventsState.templates.filter(x => x.id !== t.id);
+        // Also clear linkedTo on any children so they become roots.
+        eventsState.templates = eventsState.templates
+          .filter(x => x.id !== t.id)
+          .map(x => x.linkedTo === t.id ? { ...x, linkedTo: null } : x);
         if (editingId === t.id) { editingId = null; formEl.innerHTML = ''; }
         notifyChanged();
         renderList();
@@ -368,12 +583,18 @@ export function openEventsDialog(btn) {
       row.appendChild(editBtn);
       row.appendChild(delBtn);
       listEl.appendChild(row);
+
+      for (const child of (childrenOf.get(t.id) || [])) {
+        renderItem(child, depth + 1);
+      }
     }
+
+    for (const root of roots) renderItem(root, 0);
   }
 
   function showForm(tmpl) {
     const isNew = !tmpl;
-    const d = tmpl || { name: '', filter: null, icon: '●', color: '#4ec9b0', activeDuration: 0 };
+    const d = tmpl || { name: '', filter: null, icon: '●', color: '#4ec9b0', activeDuration: 0, linkedTo: null };
     formEl.innerHTML = '';
 
     const fhdr = document.createElement('div');
@@ -404,6 +625,24 @@ export function openEventsDialog(btn) {
     nameInput.value = d.name;
     nameInput.placeholder = 'e.g. Request sent';
     nameRow.appendChild(nameInput);
+
+    // Linked to
+    const linkRow = addRow('Link');
+    const linkSel = document.createElement('select');
+    linkSel.className = 'events-select';
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = '— standalone —';
+    linkSel.appendChild(noneOpt);
+    for (const other of eventsState.templates) {
+      if (other.id === d.id) continue;
+      const opt = document.createElement('option');
+      opt.value = other.id;
+      opt.textContent = other.name || '(unnamed)';
+      if (d.linkedTo === other.id) opt.selected = true;
+      linkSel.appendChild(opt);
+    }
+    linkRow.appendChild(linkSel);
 
     // Filter compose (positive-only, embedded — no submit button)
     const filterLabel = document.createElement('div');
@@ -513,6 +752,7 @@ export function openEventsDialog(btn) {
       const name = nameInput.value.trim();
       if (!name) return;
       const filter = compose.getRule();
+      const linkedTo = linkSel.value || null;
 
       let activeDuration = 0;
       if (durSel.value === '-1') activeDuration = -1;
@@ -523,12 +763,12 @@ export function openEventsDialog(btn) {
 
       if (isNew) {
         const id = crypto.randomUUID();
-        eventsState.templates.push({ id, name, filter, icon, color, activeDuration });
+        eventsState.templates.push({ id, name, filter, icon, color, activeDuration, linkedTo });
         if (!eventsState.enabled) { eventsState.enabled = true; enableCb.checked = true; }
       } else {
         const idx = eventsState.templates.findIndex(t => t.id === editingId);
         if (idx >= 0) {
-          eventsState.templates[idx] = { ...eventsState.templates[idx], name, filter, icon, color, activeDuration };
+          eventsState.templates[idx] = { ...eventsState.templates[idx], name, filter, icon, color, activeDuration, linkedTo };
         }
       }
       editingId = null;

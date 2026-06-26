@@ -1,6 +1,6 @@
 import { attachScrollSync, showCrosshairs, clearCrosshairs } from './timeline.js';
 import { focusState, updateFocusCount, entryMatchesFocus, buildFocusHighlightRe } from './focus.js';
-import { eventsState, matchAndAnnotate, clearEntryEvents, applyActiveDurations, rebuildActiveRanges } from './events.js';
+import { eventsState, matchAndAnnotate, clearEntryEvents, applyActiveDurations, rebuildActiveRanges, globalTracker, setNavigateCallback } from './events.js';
 import { ruleMatches, ruleIsEmpty, ruleSummary, FILTER_LEVELS, buildFilterCompose } from './filter.js';
 
 const MAX_LINES = 5000;
@@ -1083,7 +1083,7 @@ export function appendLines(messages) {
       }
 
       // Match event templates and start new active ranges
-      const evs = matchAndAnnotate(entry, rawText);
+      const evs = matchAndAnnotate(entry, rawText, globalTracker);
       if (evs && tsMs) {
         for (const ev of evs) {
           if (ev.activeDuration === 0) continue;
@@ -1130,7 +1130,7 @@ export function prependLines(group, ns, pod, container, lines) {
     const entry = buildLogEntry(line.ts || '', line.message || '', line.fields || null, line.level || '');
     const rawText = line.message || '';
     entry.dataset.rawText = rawText.slice(0, 2000);
-    matchAndAnnotate(entry, rawText);
+    matchAndAnnotate(entry, rawText, globalTracker);
     frag.appendChild(entry);
     builtEntries.push(entry);
   }
@@ -1249,17 +1249,48 @@ export function getAllEvents() {
 }
 
 // Recompute all event annotations when templates or enabled state changes.
+// Entries across all tabs are sorted by timestamp so child events can find
+// parent events that appeared in a different log (e.g. client → server).
 document.addEventListener('events:changed', () => {
+  // Reset the global tracker first.
+  globalTracker.active = [];
+
+  // Collect every log entry from every tab, clearing stale annotations.
+  const allEntries = [];
   for (const pg of panelGroups) {
     for (const tab of pg.tabs) {
       for (const entry of tab.logEl.querySelectorAll('.log-entry')) {
-        clearEntryEvents(entry);
+        clearEntryEvents(entry); // parentLinksMap cleaned up here; tracker already reset
+        const ts = entry.dataset.ts ? new Date(entry.dataset.ts).getTime() : 0;
         const text = entry.dataset.rawText || entry.querySelector('.log-body')?.textContent || '';
-        matchAndAnnotate(entry, text);
+        allEntries.push({ entry, ts, text });
       }
+    }
+  }
+
+  // Sort by timestamp; entries without a timestamp go last.
+  allEntries.sort((a, b) => {
+    if (!a.ts && !b.ts) return 0;
+    if (!a.ts) return 1;
+    if (!b.ts) return -1;
+    return a.ts - b.ts;
+  });
+
+  for (const { entry, text } of allEntries) {
+    matchAndAnnotate(entry, text, globalTracker);
+  }
+
+  // Rebuild active-duration styling per tab.
+  for (const pg of panelGroups) {
+    for (const tab of pg.tabs) {
       tab.activeRanges = [];
       applyActiveDurations(tab.logEl);
       rebuildActiveRanges(tab);
     }
   }
+});
+
+// Register navigate callback so event-link click can scroll to entries.
+setNavigateCallback(entryEl => {
+  entryEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 });

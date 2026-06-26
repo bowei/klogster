@@ -194,6 +194,7 @@ Each template has:
 
 - **Name** — a human-readable label shown in the icon tooltip.
 - **Match** — a filter composed using any combination of query (substring or regexp with Aa and .* toggles), log level chips, and structured field key/value rows (with their own Aa and .* toggles). A line must satisfy all non-empty parts of the filter to be considered a match. Field rows whose keys appear in the matched line's structured data are captured as metadata values shown in the tooltip.
+- **Link** — an optional parent template. When set, this template only fires on log lines that occur while a matching event from the parent template is still active (see Active duration below). If the parent template captures metadata fields (e.g. `req_id`), the child event only links to a parent event whose captured values for those same fields match. See [Linked templates](#linked-templates).
 - **Icon** — a visual marker shown in the log for matching lines. Choose from the built-in picker (colored circles `●`, stars `★`, or exclamation marks `!` in eight colors, plus a row of emoji) or fine-tune with the color swatch beneath the grid.
 - **Color** — used for the icon (symbols only; emoji render in their own colors) and for the active-duration border (see below).
 - **Active duration** — how long after the match to highlight subsequent lines:
@@ -209,8 +210,16 @@ The **Enabled** checkbox at the top of the dialog toggles event processing witho
 
 - **+ Add Template** opens an inline form to create a new template. Saving it automatically enables event processing if it was off.
 - **edit** on a listed template opens the same form pre-filled for editing.
-- **×** on a listed template deletes it immediately and removes its annotations from all open panels.
+- **×** on a listed template deletes it immediately and removes its annotations from all open panels. Any child templates linked to the deleted template revert to standalone (their Link is cleared).
 - Changes take effect immediately: all open log panels are re-scanned and annotated when templates are added, edited, deleted, or when the Enabled toggle changes.
+
+The template list displays linked templates in a tree. A child template appears indented under its parent with a `∟` prefix:
+
+```
+● Request       [edit] ×
+∟ ● Response    [edit] ×
+∟ ∟ ● Retry     [edit] ×
+```
 
 ### Event column in the log view
 
@@ -224,6 +233,30 @@ Hovering an event icon shows a small tooltip with:
 
 - The template name in bold.
 - A table of the field keys specified in the template's match filter and the values from that specific log line.
+- `→ ParentName` — shown in accent color when this event is a child linked to a parent event.
+- `← ChildName` — shown in muted color for each child event that has linked back to this event (one line per child).
+
+### Linked event navigation
+
+Clicking an event icon that has any linked relationship opens a small popup showing the event name, its metadata, and navigation buttons:
+
+- **Linked to: [parent name]** — shown when this event is a child. Clicking navigates to the parent event's log line.
+- **Linked from: [child name]** — shown for each child event linked to this one. Clicking navigates to that child's log line.
+
+Multiple "Linked from" rows appear if several child events linked to the same parent. Navigating scrolls the target line into view and briefly highlights it with a flash animation.
+
+### Linked templates
+
+A child template only fires when a parent event is currently active — that is, when an event from the parent template occurred earlier (in any open log) and its active duration has not yet expired. Matching is evaluated **across all open logs in timestamp order**, so parent and child events can live in completely separate log streams.
+
+This makes it possible to model correlated pairs or chains even across different services:
+
+- **Request / Response** — a "Request" template (active for 10 s) in the client log, with a "Response" template linked to it in the server log. Each response event is automatically associated with the matching open request.
+- **Trace spans** — a root span template active for the duration of a trace, with child span templates linked to it across multiple service logs.
+
+**Metadata matching** — if both the parent and child templates capture a structured field with the same key (e.g. `req_id`), a child event only links to a parent event whose captured value for that key is identical. This ensures that, for example, a response with `req_id=456` links to the request with `req_id=456` rather than any other open request.
+
+If no shared metadata keys exist between parent and child, any active parent event matches.
 
 ### Active-duration highlighting
 

@@ -2,16 +2,17 @@
 
 Give users a way to analyze log lines into Events derived from the log lines.
 
-* An EventTemplate is a:
-  * name of the template.
-  * regexp to match against a log line.
-  * list of metadata keys to be extracted using the regexp from the log line. 
-  * Event icon
-  * Event color
-  * Active duration time
-    * -1: until end of log
-    * 0: not active (default)
-    * N > 0: active until N milliseconds after the timestamp.
+An EventTemplate is a:
+
+* name of the template.
+* regexp to match against a log line.
+* list of metadata keys to be extracted using the regexp from the log line. 
+* Event icon
+* Event color
+* Active duration time
+* -1: until end of log
+* 0: not active (default)
+* N > 0: active until N milliseconds after the timestamp.
 
 If an EventTemplate regexp matches a log line, this creates an Event linked
 with the log line:
@@ -35,6 +36,36 @@ Each Event will have metadata associated with it:
 * Name of the EventTemplate that matched it
 * Any metadata keys derived from the regexp
 
+## Linking Events
+
+An EventTemplate A may be *linked* to another EventTemplate B. In this case, Events of A can occur during the period that Events of B are *active* and with matching metadata.
+
+Linking is evaluated **across all open logs in timestamp order**, not just within a single log. This enables cross-log correlations such as a client request in one log being linked to its server response in another.
+
+Linking is an optional dropdown in the Event creation dialog. The dropdown should be a list of the currently configured Events. When an Event is linked to another Event, it should be sorted to be displayed under the event in the Events list:
+
+```
+icon Event_1      [edit] x
+∟ icon Event_2    [edit] x    <-- template is linked to Event_1
+∟ icon Event_3    [edit] x    <-- template is linked to Event_2
+```
+
+The intuitive use of linked Events is to model things like protocol request/response pairs, or chains of linked Events for a trace_id — even when the two sides appear in different log streams.
+
+Example:
+
+* EventTemplate "Request" with field req_id, active for 10 s.
+* EventTemplate "Response" with field req_id, linked to template "Request".
+
+The following log lines (possibly from two separate logs):
+
+```
+client.log  00:00:01 Request req_id abc        <-- Event Request req_id = abc
+server.log  00:00:10 Response req_id abc       <-- Event Response req_id = abc, linked to the Request at 00:00:01.
+```
+
+Events that are linked show the other Events they are connected to when clicked. Each linked event is clickable and will take you to the log line of the linked event. The relationship is shown in both directions: a child event shows "Linked to: [parent]" and a parent event shows "Linked from: [child]".
+
 ## Event template Dialog
 
 * Open event template dialog button to the right of the "focus" button.
@@ -48,7 +79,13 @@ Each Event will have metadata associated with it:
 
 * If events are active, show an extra column with the icon for the events for the given
   log line to the right of the timestamp column in the log lines that have matching events.
-* Hovering over the event icon will show the event name and a small table of the metadata.
+* Hovering over the event icon will show the event name, a small table of the metadata, and
+  link arrows for any linked events:
+  * `→ ParentName` (accent color) — this event is a child, linked to that parent.
+  * `← ChildName` (muted color) — this event is a parent that a child has linked to.
+* Clicking an event icon that has any links (in either direction) opens a persistent popup
+  with "Linked to: [parent]" and/or "Linked from: [child]" buttons. Clicking a button
+  navigates to that event's log line (scroll + brief highlight).
 
 ## Event timeline
 

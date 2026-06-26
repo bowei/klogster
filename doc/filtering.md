@@ -28,7 +28,7 @@ By metadata field:
 This a sketch of what the filter/query dialog component should look like:
 
 ```
- Query: [        ] (case insensitive icon) (regex icon)
+ Query: [        ] (case sensitive icon) (regex icon)
  Log level: [ ] all [ ] debug [ ] info [ ] warn [ ] error ...
  Metadata: (list of 0 or more)
  key [   ] value [    ] (case insensitive icon) (regex icon)
