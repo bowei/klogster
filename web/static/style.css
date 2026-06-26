@@ -1898,6 +1898,57 @@ mark.focus-match {
 
 .events-dur-input { max-width: 8ch; flex: 0 0 auto; text-align: right; }
 
+/* ── Capture groups section ── */
+.events-capture-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.events-capture-add {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 2px;
+}
+.events-capture-add:hover { text-decoration: underline; }
+
+.events-capture-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px 10px;
+}
+
+.events-capture-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.events-capture-group {
+  width: 15ch;
+  flex: 0 0 auto;
+  text-align: center;
+}
+
+.events-capture-arrow {
+  color: var(--text-dim);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.events-capture-name { flex: 1; }
+
+.events-capture-hint {
+  padding: 2px 10px 5px;
+  font-size: 10px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
 .events-form-btns {
   display: flex;
   gap: 6px;

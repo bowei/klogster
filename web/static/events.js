@@ -11,7 +11,8 @@ const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7'
 
 export const ICON_PRESETS = [
   ...COLORS.map(color => ({ icon: '●', color })),
-  ...COLORS.map(color => ({ icon: '▶', color })),
+  ...COLORS.map(color => ({ icon: '⮕', color })),
+  ...COLORS.map(color => ({ icon: '⬅', color })),
   ...COLORS.map(color => ({ icon: '■', color })),
   ...COLORS.map(color => ({ icon: '◆', color })),
   // Emoji
@@ -41,6 +42,7 @@ function migrateTemplate(t) {
     };
   }
   if (!('linkedTo' in out)) out = { ...out, linkedTo: null };
+  if (!('captureGroups' in out)) out = { ...out, captureGroups: [] };
   return out;
 }
 
@@ -96,6 +98,28 @@ export function matchAndAnnotate(entry, text, tracker) {
       for (const m of tmpl.filter.metadata) {
         if (m.key && m.key in fields) metadata[m.key] = String(fields[m.key]);
       }
+    }
+
+    // Extract capture groups from the query regexp (named groups auto, positional via captureGroups).
+    if (tmpl.filter?.query?.regex && tmpl.filter.query.text) {
+      try {
+        const flags = tmpl.filter.query.caseSensitive ? '' : 'i';
+        const re = new RegExp(tmpl.filter.query.text, flags);
+        const logText = entry.querySelector('.log-msg')?.textContent || '';
+        const m = re.exec(logText);
+        if (m) {
+          if (m.groups) {
+            for (const [k, v] of Object.entries(m.groups)) {
+              if (v !== undefined) metadata[k] = v;
+            }
+          }
+          if (tmpl.captureGroups) {
+            for (const { group, name } of tmpl.captureGroups) {
+              if (name && m[group] !== undefined) metadata[name] = m[group];
+            }
+          }
+        }
+      } catch {}
     }
 
     // If linked to a parent template, require an active parent event with matching metadata.
@@ -594,7 +618,7 @@ export function openEventsDialog(btn) {
 
   function showForm(tmpl) {
     const isNew = !tmpl;
-    const d = tmpl || { name: '', filter: null, icon: '●', color: '#4ec9b0', activeDuration: 0, linkedTo: null };
+    const d = tmpl || { name: '', filter: null, icon: '●', color: '#4ec9b0', activeDuration: 0, linkedTo: null, captureGroups: [] };
     formEl.innerHTML = '';
 
     const fhdr = document.createElement('div');
@@ -734,6 +758,70 @@ export function openEventsDialog(btn) {
     durRow.appendChild(durSel);
     durRow.appendChild(durInput);
 
+    // Capture Groups
+    const cgHdr = document.createElement('div');
+    cgHdr.className = 'events-form-hdr events-capture-hdr';
+    const cgHdrText = document.createElement('span');
+    cgHdrText.textContent = 'Capture Groups';
+    const cgAddBtn = document.createElement('button');
+    cgAddBtn.type = 'button';
+    cgAddBtn.className = 'events-capture-add';
+    cgAddBtn.textContent = '+ add';
+    cgHdr.appendChild(cgHdrText);
+    cgHdr.appendChild(cgAddBtn);
+    formEl.appendChild(cgHdr);
+
+    const cgList = document.createElement('div');
+    cgList.className = 'events-capture-list';
+    formEl.appendChild(cgList);
+
+    const cgHint = document.createElement('div');
+    cgHint.className = 'events-capture-hint';
+    cgHint.textContent = 'Tip: (?<name>…) in the regexp extracts automatically without adding rows here.';
+    formEl.appendChild(cgHint);
+
+    function addCaptureRow(group = '', name = '') {
+      const row = document.createElement('div');
+      row.className = 'events-capture-row';
+
+      const groupInput = document.createElement('input');
+      groupInput.type = 'number';
+      groupInput.className = 'events-input events-capture-group';
+      groupInput.min = '1';
+      groupInput.placeholder = '#';
+      groupInput.value = group;
+
+      const arrow = document.createElement('span');
+      arrow.className = 'events-capture-arrow';
+      arrow.textContent = '→';
+
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.className = 'events-input events-capture-name';
+      nameInput.placeholder = 'field name';
+      nameInput.value = name;
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'events-btn events-btn--del';
+      delBtn.textContent = '×';
+      delBtn.addEventListener('click', () => row.remove());
+
+      row.appendChild(groupInput);
+      row.appendChild(arrow);
+      row.appendChild(nameInput);
+      row.appendChild(delBtn);
+      cgList.appendChild(row);
+    }
+
+    for (const cg of (d.captureGroups || [])) addCaptureRow(cg.group, cg.name);
+    cgAddBtn.addEventListener('click', () => {
+      const rows = cgList.querySelectorAll('.events-capture-row');
+      const nextGroup = rows.length + 1;
+      addCaptureRow(nextGroup, '');
+      cgList.lastElementChild?.querySelector('.events-capture-name')?.focus();
+    });
+
     // Buttons
     const btnRow = document.createElement('div');
     btnRow.className = 'events-form-btns';
@@ -753,6 +841,11 @@ export function openEventsDialog(btn) {
       if (!name) return;
       const filter = compose.getRule();
       const linkedTo = linkSel.value || null;
+      const captureGroups = [...cgList.querySelectorAll('.events-capture-row')].flatMap(row => {
+        const g = parseInt(row.querySelector('.events-capture-group').value, 10);
+        const n = row.querySelector('.events-capture-name').value.trim();
+        return (n && g >= 1) ? [{ group: g, name: n }] : [];
+      });
 
       let activeDuration = 0;
       if (durSel.value === '-1') activeDuration = -1;
@@ -763,12 +856,12 @@ export function openEventsDialog(btn) {
 
       if (isNew) {
         const id = crypto.randomUUID();
-        eventsState.templates.push({ id, name, filter, icon, color, activeDuration, linkedTo });
+        eventsState.templates.push({ id, name, filter, icon, color, activeDuration, linkedTo, captureGroups });
         if (!eventsState.enabled) { eventsState.enabled = true; enableCb.checked = true; }
       } else {
         const idx = eventsState.templates.findIndex(t => t.id === editingId);
         if (idx >= 0) {
-          eventsState.templates[idx] = { ...eventsState.templates[idx], name, filter, icon, color, activeDuration, linkedTo };
+          eventsState.templates[idx] = { ...eventsState.templates[idx], name, filter, icon, color, activeDuration, linkedTo, captureGroups };
         }
       }
       editingId = null;
