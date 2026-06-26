@@ -1,0 +1,53 @@
+{
+  "enabled": true,
+  "templates": [
+    {
+      "id": "20c052b5-bc90-40a1-a899-f4cbe992de45",
+      "name": "Request",
+      "filter": {
+        "type": "positive",
+        "query": {
+          "text": "request ([0-9]+)",
+          "caseSensitive": false,
+          "regex": true
+        },
+        "levels": [],
+        "metadata": []
+      },
+      "icon": "⮕",
+      "color": "#ec4899",
+      "activeDuration": -1,
+      "linkedTo": null,
+      "captureGroups": [
+        {
+          "group": 1,
+          "name": "id"
+        }
+      ]
+    },
+    {
+      "id": "0ba17f1b-bde3-4686-8296-dd71e6414d76",
+      "name": "Response",
+      "filter": {
+        "type": "positive",
+        "query": {
+          "text": "response ([0-9]+)",
+          "caseSensitive": false,
+          "regex": true
+        },
+        "levels": [],
+        "metadata": []
+      },
+      "icon": "⬅",
+      "color": "#3b82f6",
+      "activeDuration": 0,
+      "linkedTo": "20c052b5-bc90-40a1-a899-f4cbe992de45",
+      "captureGroups": [
+        {
+          "group": 1,
+          "name": "id"
+        }
+      ]
+    }
+  ]
+}
