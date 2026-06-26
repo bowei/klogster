@@ -1,0 +1,6 @@
+- name: server
+  file:
+    path: server.log
+- name: client
+  file:
+    path: client.log
