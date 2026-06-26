@@ -140,7 +140,7 @@ export function openFocusDialog(btn, initialPattern = '') {
 
   const typeSelect = document.createElement('select');
   typeSelect.className = 'focus-select';
-  [['line', 'Lines'], ['time', 'Seconds']].forEach(([v, t]) => {
+  [['line', 'Lines'], ['time', 'Milliseconds']].forEach(([v, t]) => {
     const opt = document.createElement('option');
     opt.value = v;
     opt.textContent = t;
@@ -152,7 +152,7 @@ export function openFocusDialog(btn, initialPattern = '') {
   amountInput.type = 'number';
   amountInput.className = 'focus-amount-input';
   amountInput.min = '0';
-  amountInput.max = focusState.contextType === 'line' ? '200' : '3600';
+  amountInput.max = focusState.contextType === 'line' ? '200' : '3600000';
   amountInput.value = focusState.contextAmount;
 
   const dirSelect = document.createElement('select');
@@ -201,7 +201,7 @@ export function openFocusDialog(btn, initialPattern = '') {
 
   function applyContext() {
     focusState.contextType = typeSelect.value;
-    amountInput.max = focusState.contextType === 'line' ? '200' : '3600';
+    amountInput.max = focusState.contextType === 'line' ? '200' : '3600000';
     focusState.contextAmount = Math.max(0, parseInt(amountInput.value, 10) || 0);
     focusState.contextDirection = dirSelect.value;
     if (focusState.active) notifyChanged();

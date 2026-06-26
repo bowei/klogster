@@ -347,8 +347,8 @@ function applyPanelFocus(tab) {
   } else {
     // Parse timestamps once (O(n)) rather than re-parsing for every match (was O(n×m)).
     const timestamps = entries.map(e => e.dataset.ts ? new Date(e.dataset.ts).getTime() : 0);
-    const before = contextDirection !== 'after'  ? contextAmount * 1000 : 0;
-    const after  = contextDirection !== 'before' ? contextAmount * 1000 : 0;
+    const before = contextDirection !== 'after'  ? contextAmount : 0;
+    const after  = contextDirection !== 'before' ? contextAmount : 0;
 
     for (const idx of matchIdxs) {
       visible.add(idx);
