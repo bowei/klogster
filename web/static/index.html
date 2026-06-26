@@ -117,7 +117,6 @@
         <h3>Events</h3>
         <dl>
           <dt>Events button</dt><dd>Opens the event template manager. Templates match log lines using filters (query, log level, or structured fields) and mark matching lines with a colored icon in a dedicated column to the left of the level badge. Hovering an icon shows the template name and any captured structured field values.</dd>
-          <dt>Active duration</dt><dd>Each template can highlight subsequent log lines with a colored left-border for a configurable window after a match — useful for marking the span of a request, deployment, or any timed interval.</dd>
           <dt>Linked templates</dt><dd>A child template only fires while a parent template event is still active. Matching is evaluated across all open logs in timestamp order, enabling correlated pairs (e.g. request / response) even across separate log streams.</dd>
           <dt>Event timeline</dt><dd>A horizontal strip above the panels shows all matched events positioned by timestamp. Scroll to zoom; drag to pan. Click an icon to navigate to the matching log line.</dd>
         </dl>

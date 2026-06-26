@@ -17,10 +17,10 @@ Each template has:
 - **Icon** — a visual marker placed next to matching lines. Choose from colored
   symbols (circles `●`, stars `★`, exclamation marks `!`) or emoji.
 - **Color** — used for symbol icons and the active-duration left-border.
-- **Active duration** — how long to highlight lines after a match:
+- **Active duration** — how long an Event is available for linking:
   - *None* (default) — icon only.
-  - *Until end of log* — all subsequent lines are highlighted.
-  - *Custom* — lines within N milliseconds of the match are highlighted.
+  - *Until end of log* — until end of logs.
+  - *Custom* — lines within N milliseconds of the match.
 - **Link** — optional parent template (see [Linked templates](#linked-templates)).
 
 ## Event display in the log view
@@ -38,8 +38,7 @@ Hovering an icon shows a tooltip with:
 - The template name.
 - A table of structured field keys from the template's match filter and their
   values from that log line.
-- `→ ParentName` (accent color) when this event is a child linked to a parent.
-- `← ChildName` (muted color) for each child event linked back to this one.
+- Linked Events.
 
 Clicking an icon that has any linked relationship opens a navigation popup with
 **Linked to: [parent]** and **Linked from: [child]** buttons. Clicking a button
